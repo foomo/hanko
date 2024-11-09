@@ -25,7 +25,10 @@ type PasslinkHandlerAdmin struct {
 }
 
 func NewPasslinkHandlerAdmin(persister persistence.Persister) *PasslinkHandlerAdmin {
-	return &PasslinkHandlerAdmin{persister: persister}
+	return &PasslinkHandlerAdmin{
+		passlinkGenerator: crypto.NewPasslinkGenerator(),
+		persister:         persister,
+	}
 }
 
 func (h *PasslinkHandlerAdmin) Delete(c echo.Context) error {
