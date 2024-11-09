@@ -9,6 +9,7 @@ import (
 
 type Passlink struct {
 	Token      string    `json:"token"`
+	ID         uuid.UUID `json:"id"`
 	UserID     uuid.UUID `json:"user_id"`
 	EmailID    uuid.UUID `json:"email_id"`
 	Email      *Email    `json:"email,omitempty"`
@@ -23,6 +24,7 @@ type Passlink struct {
 func FromPasslinkModel(model models.Passlink, token string) Passlink {
 	return Passlink{
 		Token:      token,
+		ID:         model.ID,
 		UserID:     model.UserID,
 		EmailID:    model.EmailID,
 		Email:      FromEmailModel(&model.Email),
