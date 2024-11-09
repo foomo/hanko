@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -53,6 +54,7 @@ func NewAdminRouter(cfg *config.Config, persister persistence.Persister, prometh
 
 	userHandler := NewUserHandlerAdmin(persister)
 	emailHandler := NewEmailAdminHandler(cfg, persister)
+	passlinkHandler := NewPasslinkHandlerAdmin(persister)
 
 	user := g.Group("/users")
 	user.GET("", userHandler.List)
@@ -66,6 +68,10 @@ func NewAdminRouter(cfg *config.Config, persister persistence.Persister, prometh
 	email.GET("/:email_id", emailHandler.Get)
 	email.DELETE("/:email_id", emailHandler.Delete)
 	email.POST("/:email_id/set_primary", emailHandler.SetPrimaryEmail)
+
+	passlink := g.Group("/passlink")
+	passlink.POST("", passlinkHandler.Create)
+	passlink.DELETE("/:id", passlinkHandler.Delete)
 
 	auditLogHandler := NewAuditLogHandler(persister)
 

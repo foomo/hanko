@@ -2,6 +2,12 @@ package handler
 
 import (
 	"fmt"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/go-sql-driver/mysql"
 	"github.com/gobuffalo/pop/v6"
 	"github.com/gofrs/uuid"
@@ -15,11 +21,6 @@ import (
 	"github.com/teamhanko/hanko/backend/persistence/models"
 	"github.com/teamhanko/hanko/backend/webhooks/events"
 	"github.com/teamhanko/hanko/backend/webhooks/utils"
-	"net/http"
-	"net/url"
-	"strconv"
-	"strings"
-	"time"
 )
 
 type UserHandlerAdmin struct {

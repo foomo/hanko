@@ -52,24 +52,24 @@ func (h *PasslinkHandlerAdmin) Delete(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-func (h *PasslinkHandlerAdmin) Get(c echo.Context) error {
-	passlinkId, err := uuid.FromString(c.Param("id"))
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "failed to parse passlinkId as uuid").SetInternal(err)
-	}
+// func (h *PasslinkHandlerAdmin) Get(c echo.Context) error {
+// 	passlinkId, err := uuid.FromString(c.Param("id"))
+// 	if err != nil {
+// 		return echo.NewHTTPError(http.StatusBadRequest, "failed to parse passlinkId as uuid").SetInternal(err)
+// 	}
 
-	p := h.persister.GetPasslinkPersister()
-	passlink, err := p.Get(passlinkId)
-	if err != nil {
-		return fmt.Errorf("failed to get passlink: %w", err)
-	}
+// 	p := h.persister.GetPasslinkPersister()
+// 	passlink, err := p.Get(passlinkId)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to get passlink: %w", err)
+// 	}
 
-	if passlink == nil {
-		return echo.NewHTTPError(http.StatusNotFound, "passlink not found")
-	}
+// 	if passlink == nil {
+// 		return echo.NewHTTPError(http.StatusNotFound, "passlink not found")
+// 	}
 
-	return c.JSON(http.StatusOK, admin.FromPasslinkModel(*passlink))
-}
+// 	return c.JSON(http.StatusOK, admin.FromPasslinkModel(*passlink))
+// }
 
 func (h *PasslinkHandlerAdmin) Create(c echo.Context) error {
 	var body admin.CreatePasslink
@@ -149,7 +149,6 @@ func (h *PasslinkHandlerAdmin) Create(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "passlink not found")
 	}
 
-	passlinkDto := admin.FromPasslinkModel(*passlink)
-
+	passlinkDto := admin.FromPasslinkModel(*passlink, string(tokenHashed))
 	return c.JSON(http.StatusOK, passlinkDto)
 }

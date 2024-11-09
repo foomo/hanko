@@ -8,7 +8,7 @@ import (
 )
 
 type Passlink struct {
-	ID         uuid.UUID `json:"id"`
+	Token      string    `json:"token"`
 	UserID     uuid.UUID `json:"user_id"`
 	EmailID    uuid.UUID `json:"email_id"`
 	Email      *Email    `json:"email,omitempty"`
@@ -20,9 +20,9 @@ type Passlink struct {
 }
 
 // FromPasslinkModel Converts the DB model to a DTO object
-func FromPasslinkModel(model models.Passlink) Passlink {
+func FromPasslinkModel(model models.Passlink, token string) Passlink {
 	return Passlink{
-		ID:         model.ID,
+		Token:      token,
 		UserID:     model.UserID,
 		EmailID:    model.EmailID,
 		Email:      FromEmailModel(&model.Email),
