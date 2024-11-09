@@ -152,6 +152,6 @@ func (h *PasslinkHandlerAdmin) Create(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "passlink not found")
 	}
 
-	passlinkDto := admin.FromPasslinkModel(*passlink, string(tokenHashed))
+	passlinkDto := admin.FromPasslinkModel(*passlink, token)
 	return c.JSON(http.StatusOK, passlinkDto)
 }
