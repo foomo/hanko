@@ -50,7 +50,7 @@ export const en: Translation = {
     trustDevice: "Trust this browser?",
   },
   texts: {
-    enterPasscode: 'Enter the passcode that was sent to "{emailAddress}".',
+    enterPasscode: "Enter the passcode sent to your email address.",
     enterPasscodeNoEmail:
       "Enter the passcode that was sent to your primary email address.",
     setupPasskey:
@@ -131,7 +131,7 @@ export const en: Translation = {
     addEmail: "Add email",
     createPasskey: "Create a passkey",
     webauthnUnsupported: "Passkeys are not supported by your browser",
-    signInWith: "Sign in with {provider}",
+    signInWith: "Continue with {provider}",
     deleteAccount: "Yes, delete this account.",
     emailOrUsername: "Email or username",
     username: "Username",
@@ -190,7 +190,7 @@ export const en: Translation = {
       "The session has expired, please click the button to restart.",
     value_invalid_error: "The entered value is invalid.",
     passcode_invalid: "The passcode provided was not correct.",
-    passkey_invalid: "This passkey cannot be used anymore",
+    passkey_invalid: "This passkey cannot be used anymore.",
     passcode_max_attempts_reached:
       "The passcode was entered incorrectly too many times. Please request a new code.",
     rate_limit_exceeded:

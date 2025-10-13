@@ -26,6 +26,7 @@ import Link from "../components/link/Link";
 import Footer from "../components/wrapper/Footer";
 import Checkbox from "../components/form/Checkbox";
 import Spacer from "../components/spacer/Spacer";
+import Paragraph from "../components/paragraph/Paragraph";
 
 interface Props {
   state: State<"login_init">;
@@ -191,23 +192,6 @@ const LoginInitPage = (props: Props) => {
             <Divider hidden={!showDivider}>{t("labels.or")}</Divider>
           </Fragment>
         ) : null}
-        {flowState.actions.webauthn_generate_request_options.enabled &&
-        !hidePasskeyButtonOnLogin ? (
-          <Form
-            flowAction={flowState.actions.webauthn_generate_request_options}
-          >
-            <Button
-              secondary
-              title={
-                !isWebAuthnSupported ? t("labels.webauthnUnsupported") : null
-              }
-              disabled={!isWebAuthnSupported}
-              icon={"passkey"}
-            >
-              {t("labels.signInPasskey")}
-            </Button>
-          </Form>
-        ) : null}
         {flowState.actions.thirdparty_oauth.enabled
           ? flowState.actions.thirdparty_oauth.inputs.provider.allowed_values?.map(
               (v) => {
@@ -238,6 +222,22 @@ const LoginInitPage = (props: Props) => {
               },
             )
           : null}
+        {flowState.actions.webauthn_generate_request_options.enabled &&
+        !hidePasskeyButtonOnLogin ? (
+          <Form
+            flowAction={flowState.actions.webauthn_generate_request_options}
+          >
+            <Button
+              secondary
+              title={
+                !isWebAuthnSupported ? t("labels.webauthnUnsupported") : null
+              }
+              disabled={!isWebAuthnSupported}
+            >
+              {t("labels.signInPasskey")}
+            </Button>
+          </Form>
+        ) : null}
         {flowState.actions.remember_me.enabled && (
           <Fragment>
             <Spacer />
@@ -252,14 +252,16 @@ const LoginInitPage = (props: Props) => {
         )}
       </Content>
       <Footer hidden={initialComponentName !== "auth"}>
-        <span hidden />
-        <Link
-          onClick={onRegisterClick}
-          loadingSpinnerPosition={"left"}
-          isLoading={isFlowSwitchLoading}
-        >
-          {t("labels.dontHaveAnAccount")}
-        </Link>
+        <Paragraph center>
+          <span>{t("labels.dontHaveAnAccount")}</span>
+          <Link
+            onClick={onRegisterClick}
+            loadingSpinnerPosition={"left"}
+            isLoading={isFlowSwitchLoading}
+          >
+            {t("labels.signUp")}
+          </Link>
+        </Paragraph>
       </Footer>
     </Fragment>
   );
