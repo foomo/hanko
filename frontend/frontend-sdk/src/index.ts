@@ -6,79 +6,48 @@ export { Hanko };
 
 // Clients
 
-import { ConfigClient } from "./lib/client/ConfigClient";
-import { PasscodeClient } from "./lib/client/PasscodeClient";
-import { PasswordClient } from "./lib/client/PasswordClient";
+import { HttpClient } from "./lib/client/HttpClient";
+import { Client } from "./lib/client/Client";
+import { SessionClient } from "./lib/client/SessionClient";
 import { UserClient } from "./lib/client/UserClient";
-import { WebauthnClient } from "./lib/client/WebauthnClient";
-import { EmailClient } from "./lib/client/EmailClient";
-import { ThirdPartyClient } from "./lib/client/ThirdPartyClient";
-import { TokenClient } from "./lib/client/TokenClient";
-import { EnterpriseClient } from "./lib/client/EnterpriseClient";
 
-export {
-  ConfigClient,
-  UserClient,
-  WebauthnClient,
-  PasswordClient,
-  PasscodeClient,
-  EmailClient,
-  ThirdPartyClient,
-  TokenClient,
-  EnterpriseClient,
-};
+export { HttpClient, Client, SessionClient, UserClient };
+
+// Events
+
+import { Relay } from "./lib/events/Relay";
+
+export { Relay };
 
 // Utils
 
 import { WebauthnSupport } from "./lib/WebauthnSupport";
+import {
+  generateCodeVerifier,
+  setStoredCodeVerifier,
+  getStoredCodeVerifier,
+  clearStoredCodeVerifier,
+} from "./lib/Pkce";
 
-export { WebauthnSupport };
+export {
+  WebauthnSupport,
+  generateCodeVerifier,
+  setStoredCodeVerifier,
+  getStoredCodeVerifier,
+  clearStoredCodeVerifier,
+};
 
 // DTO
 
 import {
-  PasswordConfig,
-  EmailConfig,
-  AccountConfig,
-  Config,
-  WebauthnFinalized,
-  TokenFinalized,
-  UserInfo,
-  Me,
-  Credential,
-  User,
-  UserCreated,
-  Passcode,
-  WebauthnTransports,
-  Attestation,
   Email,
   Emails,
-  WebauthnCredential,
-  WebauthnCredentials,
   Identity,
+  SessionCheckResponse,
+  Claims,
 } from "./lib/Dto";
 
-export type {
-  PasswordConfig,
-  EmailConfig,
-  AccountConfig,
-  Config,
-  WebauthnFinalized,
-  TokenFinalized,
-  UserInfo,
-  Me,
-  Credential,
-  User,
-  UserCreated,
-  Passcode,
-  WebauthnTransports,
-  Attestation,
-  Email,
-  Emails,
-  WebauthnCredential,
-  WebauthnCredentials,
-  Identity,
-};
+export type { Email, Emails, Identity, SessionCheckResponse, Claims };
 
 // Errors
 
@@ -129,18 +98,17 @@ export {
 import {
   CustomEventWithDetail,
   SessionDetail,
-  AuthFlowCompletedDetail,
-  authFlowCompletedType,
+  FlowDetail,
   sessionCreatedType,
   sessionExpiredType,
   userLoggedOutType,
   userDeletedType,
 } from "./lib/events/CustomEvents";
 
-export type { SessionDetail, AuthFlowCompletedDetail };
+export type { SessionDetail };
+export type { FlowDetail };
 
 export {
-  authFlowCompletedType,
   sessionCreatedType,
   sessionExpiredType,
   userLoggedOutType,
@@ -153,3 +121,11 @@ export {
 import { CookieSameSite } from "./lib/Cookie";
 
 export type { CookieSameSite };
+
+// Flow
+export * from "./lib/flow-api/State";
+export * from "./lib/flow-api/types/flow";
+export * from "./lib/flow-api/types/flowError";
+export * from "./lib/flow-api/types/payload";
+export * from "./lib/flow-api/types/state";
+export * from "./lib/flow-api/types/input";

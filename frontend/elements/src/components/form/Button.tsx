@@ -1,5 +1,11 @@
 import { ComponentChildren } from "preact";
-import { useEffect, useRef } from "preact/compat";
+import {
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "preact/compat";
 
 import cx from "classnames";
 
@@ -7,9 +13,14 @@ import styles from "./styles.sass";
 
 import LoadingSpinner from "../icons/LoadingSpinner";
 import Icon, { IconName } from "../icons/Icon";
+import { AppContext } from "../../contexts/AppProvider";
+import { useFlowEffects } from "../../hooks/UseFlowEffects";
+import { useFormContext } from "./Form";
+import { TranslateContext } from "@denysvuika/preact-translate";
 
 type Props = {
   title?: string;
+  showSuccessIcon?: boolean;
   children: ComponentChildren;
   secondary?: boolean;
   dangerous?: boolean;
@@ -17,6 +28,7 @@ type Props = {
   isSuccess?: boolean;
   disabled?: boolean;
   autofocus?: boolean;
+  showLastUsed?: boolean;
   onClick?: (event: Event) => void;
   icon?: IconName;
 };
@@ -26,14 +38,22 @@ const Button = ({
   children,
   secondary,
   dangerous,
-  disabled,
-  isLoading,
-  isSuccess,
   autofocus,
+  showLastUsed,
   onClick,
   icon,
+  showSuccessIcon,
+  ...props
 }: Props) => {
   const ref = useRef(null);
+  const { uiState } = useContext(AppContext);
+  const { t } = useContext(TranslateContext);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSuccess, setIsSuccess] = useState<boolean>(false);
+
+  const { flowAction } = useFormContext();
+
+  useFlowEffects(flowAction, setIsLoading, setIsSuccess);
 
   useEffect(() => {
     const { current: element } = ref;
@@ -41,6 +61,16 @@ const Button = ({
       element.focus();
     }
   }, [autofocus]);
+
+  const success = useMemo(
+    () => showSuccessIcon && (isSuccess || props.isSuccess),
+    [isSuccess, props, showSuccessIcon],
+  );
+
+  const disabled = useMemo(
+    () => uiState.isDisabled || props.disabled,
+    [props, uiState],
+  );
 
   return (
     <button
@@ -55,7 +85,7 @@ const Button = ({
       title={title}
       ref={ref}
       type={"submit"}
-      disabled={disabled || isLoading || isSuccess}
+      disabled={disabled}
       onClick={onClick}
       className={cx(
         styles.button,
@@ -63,24 +93,23 @@ const Button = ({
           ? styles.dangerous
           : secondary
           ? styles.secondary
-          : styles.primary
+          : styles.primary,
       )}
+      data-bubble={showLastUsed ? t("labels.lastUsed") : undefined}
     >
       <LoadingSpinner
         isLoading={isLoading}
-        isSuccess={isSuccess}
+        isSuccess={success}
         secondary={true}
         hasIcon={!!icon}
         maxWidth
       >
         {icon ? (
-          <Icon
-            name={icon}
-            secondary={secondary}
-            disabled={disabled || isLoading || isSuccess}
-          />
+          <Icon name={icon} secondary={secondary} disabled={disabled} />
         ) : null}
-        {children}
+        <div className={styles.caption}>
+          <span>{children}</span>
+        </div>
       </LoadingSpinner>
     </button>
   );

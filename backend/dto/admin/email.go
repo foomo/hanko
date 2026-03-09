@@ -2,7 +2,7 @@ package admin
 
 import (
 	"github.com/gofrs/uuid"
-	"github.com/teamhanko/hanko/backend/persistence/models"
+	"github.com/teamhanko/hanko/backend/v2/persistence/models"
 	"time"
 )
 
@@ -38,7 +38,7 @@ type EmailRequests interface {
 }
 
 type ListEmailRequestDto struct {
-	UserId string `param:"user_id" validate:"required,uuid4"`
+	UserId string `param:"user_id" validate:"required,uuid"`
 }
 
 type CreateEmailRequestDto struct {

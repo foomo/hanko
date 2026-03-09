@@ -1,13 +1,16 @@
-import { Component, OnInit, ViewChild } from '@angular/core';
+import { Component, CUSTOM_ELEMENTS_SCHEMA, OnInit, ViewChild } from "@angular/core";
 import { Router } from '@angular/router';
 import { Todos, TodoService } from '../services/todo.service';
 import { HankoService } from "../services/hanko.services";
 import { SessionExpiredModalComponent } from "../modal/session-expired-modal.component";
 
 @Component({
-  selector: 'app-todo',
-  templateUrl: './todo.component.html',
-  styleUrls: ['../app.component.css', './todo.component.css'],
+    selector: 'app-todo',
+    templateUrl: './todo.component.html',
+    styleUrls: ['../app.component.css', './todo.component.css'],
+    standalone: true,
+    imports: [SessionExpiredModalComponent],
+    schemas: [CUSTOM_ELEMENTS_SCHEMA]
 })
 export class TodoComponent implements OnInit {
   todos: Todos = [];
@@ -19,8 +22,9 @@ export class TodoComponent implements OnInit {
   @ViewChild(SessionExpiredModalComponent)
   private sessionExpiredModalComponent!: SessionExpiredModalComponent;
 
-  ngOnInit(): void {
-      if (this.hankoService.client.session.isValid()) {
+  async ngOnInit() {
+    const { is_valid} = await this.hankoService.client.validateSession();
+    if (is_valid) {
         this.listTodos();
       } else {
         this.redirectToLogin();
@@ -108,7 +112,7 @@ export class TodoComponent implements OnInit {
   }
 
   logout() {
-    this.hankoService.client.user.logout().catch((e) => (this.error = e));
+    this.hankoService.client.logout().catch((e) => (this.error = e));
   }
 
   redirectToLogin() {

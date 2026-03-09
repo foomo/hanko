@@ -1,5 +1,5 @@
 import { ComponentChildren, Fragment, h } from "preact";
-import { StateUpdater } from "preact/compat";
+import { Dispatch, SetStateAction } from "preact/compat";
 
 import Accordion from "./Accordion";
 
@@ -7,25 +7,25 @@ interface Props {
   name: string;
   title: string | h.JSX.Element;
   children: ComponentChildren;
-  checkedItemIndex?: number;
-  setCheckedItemIndex: StateUpdater<number>;
+  checkedItemID?: string;
+  setCheckedItemID: Dispatch<SetStateAction<string>>;
 }
 
 const Dropdown = ({
   name,
   title,
   children,
-  checkedItemIndex,
-  setCheckedItemIndex,
+  checkedItemID,
+  setCheckedItemID,
 }: Props) => {
   return (
     <Accordion
       dropdown
       name={name}
       columnSelector={() => title}
-      contentSelector={() => <Fragment>{children}</Fragment>}
-      setCheckedItemIndex={setCheckedItemIndex}
-      checkedItemIndex={checkedItemIndex}
+      contentSelector={() => <>{children}</>}
+      setCheckedItemID={setCheckedItemID}
+      checkedItemID={checkedItemID}
       data={[{}]}
     />
   );

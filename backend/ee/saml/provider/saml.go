@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"github.com/fatih/structs"
 	saml2 "github.com/russellhaering/gosaml2"
-	"github.com/teamhanko/hanko/backend/config"
-	samlConfig "github.com/teamhanko/hanko/backend/ee/saml/config"
-	"github.com/teamhanko/hanko/backend/persistence"
-	"github.com/teamhanko/hanko/backend/thirdparty"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	samlConfig "github.com/teamhanko/hanko/backend/v2/ee/saml/config"
+	"github.com/teamhanko/hanko/backend/v2/persistence"
+	"github.com/teamhanko/hanko/backend/v2/thirdparty"
 	"strings"
 	"time"
 )
@@ -37,7 +37,7 @@ func NewBaseSamlProvider(cfg *config.Config, idpConfig samlConfig.IdentityProvid
 			IDPCertificateStore:    &idpMetadata.certs,
 
 			AssertionConsumerServiceURL: fmt.Sprintf("%s/saml/callback", cfg.Saml.Endpoint),
-			ServiceProviderIssuer:       fmt.Sprintf("%s/saml/metadata", cfg.Saml.Endpoint),
+			ServiceProviderIssuer:       cfg.Saml.Endpoint,
 			ServiceProviderSLOURL:       fmt.Sprintf("%s/saml/logout", cfg.Saml.Endpoint),
 			SPKeyStore:                  serviceProviderCertStore,
 
@@ -76,7 +76,7 @@ func (sp *BaseSamlProvider) GetUserData(assertionInfo *saml2.AssertionInfo) *thi
 
 	email := thirdparty.Email{
 		Email:    emailAddress,
-		Verified: assertionValues.Get(attributeMap.EmailVerified) != "",
+		Verified: assertionValues.Get(attributeMap.EmailVerified) == "true",
 		Primary:  true,
 	}
 

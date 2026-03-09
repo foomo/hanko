@@ -1,18 +1,16 @@
 import { h } from "preact";
-import { StateUpdater } from "preact/compat";
+import { Dispatch, SetStateAction, useCallback } from "preact/compat";
+type Selector<T> = (item: T, itemIndex?: number) => string | h.JSX.Element;
 
 import cx from "classnames";
-
 import styles from "./styles.sass";
-
-type Selector<T> = (item: T, itemIndex?: number) => string | h.JSX.Element;
 
 interface Props<T> {
   name: string;
   columnSelector: Selector<T>;
   contentSelector: Selector<T>;
-  checkedItemIndex?: number;
-  setCheckedItemIndex: StateUpdater<number>;
+  checkedItemID?: string;
+  setCheckedItemID: Dispatch<SetStateAction<string | null>>;
   data: Array<T>;
   dropdown?: boolean;
 }
@@ -21,15 +19,26 @@ const Accordion = function <T>({
   name,
   columnSelector,
   contentSelector,
-  data,
-  checkedItemIndex,
-  setCheckedItemIndex,
+  data = [],
+  checkedItemID,
+  setCheckedItemID,
   dropdown = false,
 }: Props<T>) {
+  const toID = useCallback(
+    (itemIndex: number) => `${name}-${itemIndex}`,
+    [name],
+  );
+
+  const checked = useCallback(
+    (itemIndex: number) => toID(itemIndex) === checkedItemID,
+    [checkedItemID, toID],
+  );
+
   const clickHandler = (event: Event) => {
     if (!(event.target instanceof HTMLInputElement)) return;
     const itemIndex = parseInt(event.target.value, 10);
-    setCheckedItemIndex(itemIndex === checkedItemIndex ? null : itemIndex);
+    const id = toID(itemIndex);
+    setCheckedItemID(id === checkedItemID ? null : id);
   };
 
   return (
@@ -43,7 +52,7 @@ const Accordion = function <T>({
             name={name}
             onClick={clickHandler}
             value={itemIndex}
-            checked={checkedItemIndex === itemIndex}
+            checked={checked(itemIndex)}
           />
           <label
             className={cx(styles.label, dropdown && styles.dropdown)}
@@ -56,7 +65,7 @@ const Accordion = function <T>({
           <div
             className={cx(
               styles.accordionContent,
-              dropdown && styles.dropdownContent
+              dropdown && styles.dropdownContent,
             )}
           >
             {contentSelector(item, itemIndex)}

@@ -1,8 +1,11 @@
 package dto
 
 import (
+	"encoding/json"
+
 	"github.com/gofrs/uuid"
-	"github.com/teamhanko/hanko/backend/persistence/models"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	"github.com/teamhanko/hanko/backend/v2/persistence/models"
 )
 
 type EmailResponse struct {
@@ -10,8 +13,8 @@ type EmailResponse struct {
 	Address    string     `json:"address"`
 	IsVerified bool       `json:"is_verified"`
 	IsPrimary  bool       `json:"is_primary"`
-	Identity   *Identity  `json:"identity,omitempty"` // Deprecated
-	Identities Identities `json:"identities,omitempty"`
+	Identity   *Identity  `json:"identity,omitempty"`   // Deprecated
+	Identities Identities `json:"identities,omitempty"` // Deprecated. Identities are now accessible at the user level.
 }
 
 type EmailCreateRequest struct {
@@ -23,35 +26,43 @@ type EmailUpdateRequest struct {
 }
 
 // FromEmailModel Converts the DB model to a DTO object
-func FromEmailModel(email *models.Email) *EmailResponse {
+func FromEmailModel(email *models.Email, cfg *config.Config) *EmailResponse {
 	emailResponse := &EmailResponse{
 		ID:         email.ID,
 		Address:    email.Address,
 		IsVerified: email.Verified,
 		IsPrimary:  email.IsPrimary(),
-		Identities: FromIdentitiesModel(email.Identities),
+		Identities: FromIdentitiesModel(email.Identities, cfg),
 	}
 
 	if len(email.Identities) > 0 {
-		identity := FromIdentityModel(&email.Identities[0])
+		identity := FromIdentityModel(&email.Identities[0], cfg)
 		emailResponse.Identity = identity
 	}
 
 	return emailResponse
 }
 
-type EmailJwt struct {
+type EmailJWT struct {
 	Address    string `json:"address"`
 	IsPrimary  bool   `json:"is_primary"`
 	IsVerified bool   `json:"is_verified"`
 }
 
-func JwtFromEmailModel(email *models.Email) *EmailJwt {
+func (e *EmailJWT) String() string {
+	if e == nil {
+		return ""
+	}
+	jsonBytes, _ := json.Marshal(e)
+	return string(jsonBytes)
+}
+
+func EmailJWTFromEmailModel(email *models.Email) *EmailJWT {
 	if email == nil {
 		return nil
 	}
 
-	return &EmailJwt{
+	return &EmailJWT{
 		Address:    email.Address,
 		IsPrimary:  email.IsPrimary(),
 		IsVerified: email.Verified,

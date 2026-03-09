@@ -1,19 +1,13 @@
 package config
 
 import (
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"os"
 	"reflect"
 	"testing"
-)
 
-func TestDefaultConfigNotEnoughForValidation(t *testing.T) {
-	cfg := DefaultConfig()
-	if err := cfg.Validate(); err == nil {
-		t.Error("The default config is missing mandatory parameters. This should not validate without error.")
-	}
-}
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestDefaultConfigAccountParameters(t *testing.T) {
 	cfg := DefaultConfig()
@@ -35,22 +29,6 @@ func TestParseValidConfig(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Error(err)
 	}
-}
-
-func TestPasscodeSmtpSettingsCopiedToRootLevelSmtp(t *testing.T) {
-	configPath := "./passcode-smtp-config.yaml"
-	cfg, err := Load(&configPath)
-	if err != nil {
-		t.Error(err)
-	}
-	if err := cfg.Validate(); err != nil {
-		t.Error(err)
-	}
-
-	assert.Equal(t, cfg.Smtp.Port, cfg.Passcode.Smtp.Port)
-	assert.Equal(t, cfg.Smtp.Host, cfg.Passcode.Smtp.Host)
-	assert.Equal(t, cfg.Smtp.Password, cfg.Passcode.Smtp.Password)
-	assert.Equal(t, cfg.Smtp.User, cfg.Passcode.Smtp.User)
 }
 
 func TestRootSmtpPasscodeSmtpConflict(t *testing.T) {
@@ -102,6 +80,38 @@ func TestRateLimiterConfig(t *testing.T) {
 	}
 }
 
+func TestFlowLockerConfig(t *testing.T) {
+	configPath := "./minimal-config.yaml"
+	cfg, err := Load(&configPath)
+
+	if err != nil {
+		t.Error(err)
+	}
+	cfg.FlowLocker.Enabled = true
+	cfg.FlowLocker.Store = "in_memory"
+
+	if err := cfg.Validate(); err != nil {
+		t.Error(err)
+	}
+
+	cfg.FlowLocker.Store = "redis"
+	if err := cfg.Validate(); err == nil {
+		t.Error("when specifying redis, the redis config should also be specified")
+	}
+	cfg.FlowLocker.Redis = &RedisConfig{
+		Address:  "127.0.0.1:9876",
+		Password: "password",
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Error(err)
+	}
+
+	cfg.FlowLocker.Store = "notvalid"
+	if err := cfg.Validate(); err == nil {
+		t.Error("notvalid is not a valid backend")
+	}
+}
+
 func TestEnvironmentVariables(t *testing.T) {
 	err := os.Setenv("SMTP_HOST", "valueFromEnvVars")
 	require.NoError(t, err)
@@ -115,4 +125,40 @@ func TestEnvironmentVariables(t *testing.T) {
 
 	assert.Equal(t, "valueFromEnvVars", cfg.Smtp.Host)
 	assert.True(t, reflect.DeepEqual([]string{"https://hanko.io", "https://auth.hanko.io"}, cfg.Webauthn.RelyingParty.Origins))
+}
+
+func TestParseSecurityNotificationsConfig(t *testing.T) {
+	configPath := "./security-notifications-disabled-config.yaml"
+	cfg, err := Load(&configPath)
+	if err != nil {
+		t.Error(err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Error(err)
+	}
+	notificationsConfig := cfg.SecurityNotifications
+
+	assert.False(t, notificationsConfig.Notifications.EmailCreate.Enabled)
+	assert.False(t, notificationsConfig.Notifications.EmailDelete.Enabled)
+	assert.False(t, notificationsConfig.Notifications.PrimaryEmailUpdate.Enabled)
+	assert.False(t, notificationsConfig.Notifications.PasswordUpdate.Enabled)
+	assert.False(t, notificationsConfig.Notifications.PasskeyCreate.Enabled)
+	assert.False(t, notificationsConfig.Notifications.MFACreate.Enabled)
+	assert.False(t, notificationsConfig.Notifications.MFADelete.Enabled)
+}
+
+func TestParseDefaultSecurityNotificationsConfig(t *testing.T) {
+	cfg := DefaultConfig()
+	if err := cfg.Validate(); err != nil {
+		t.Error(err)
+	}
+	notificationsConfig := cfg.SecurityNotifications
+
+	assert.True(t, notificationsConfig.Notifications.EmailCreate.Enabled)
+	assert.True(t, notificationsConfig.Notifications.EmailDelete.Enabled)
+	assert.True(t, notificationsConfig.Notifications.PrimaryEmailUpdate.Enabled)
+	assert.True(t, notificationsConfig.Notifications.PasswordUpdate.Enabled)
+	assert.True(t, notificationsConfig.Notifications.PasskeyCreate.Enabled)
+	assert.True(t, notificationsConfig.Notifications.MFACreate.Enabled)
+	assert.True(t, notificationsConfig.Notifications.MFADelete.Enabled)
 }

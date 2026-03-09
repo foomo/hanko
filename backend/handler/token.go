@@ -3,19 +3,20 @@ package handler
 import (
 	"errors"
 	"fmt"
+	"net/http"
+	"time"
+
 	"github.com/gobuffalo/pop/v6"
 	"github.com/gofrs/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/sethvargo/go-limiter"
-	auditlog "github.com/teamhanko/hanko/backend/audit_log"
-	"github.com/teamhanko/hanko/backend/config"
-	"github.com/teamhanko/hanko/backend/dto"
-	"github.com/teamhanko/hanko/backend/persistence"
-	"github.com/teamhanko/hanko/backend/persistence/models"
-	rateLimit "github.com/teamhanko/hanko/backend/rate_limiter"
-	"github.com/teamhanko/hanko/backend/session"
-	"net/http"
-	"time"
+	auditlog "github.com/teamhanko/hanko/backend/v2/audit_log"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	"github.com/teamhanko/hanko/backend/v2/dto"
+	"github.com/teamhanko/hanko/backend/v2/persistence"
+	"github.com/teamhanko/hanko/backend/v2/persistence/models"
+	rateLimit "github.com/teamhanko/hanko/backend/v2/rate_limiter"
+	"github.com/teamhanko/hanko/backend/v2/session"
 )
 
 type TokenHandler struct {
@@ -87,12 +88,15 @@ func (h TokenHandler) Validate(c echo.Context) error {
 			return fmt.Errorf("failed to get emails from db: %w", err)
 		}
 
-		var emailJwt *dto.EmailJwt
+		var emailJwt *dto.EmailJWT
 		if e := emails.GetPrimary(); e != nil {
-			emailJwt = dto.JwtFromEmailModel(e)
+			emailJwt = dto.EmailJWTFromEmailModel(e)
 		}
 
-		jwtToken, err := h.sessionManager.GenerateJWT(token.UserID, emailJwt)
+		jwtToken, rawToken, err := h.sessionManager.GenerateJWT(dto.UserJWT{
+			UserID: token.UserID.String(),
+			Email:  emailJwt,
+		})
 		if err != nil {
 			return fmt.Errorf("failed to generate jwt: %w", err)
 		}
@@ -100,6 +104,11 @@ func (h TokenHandler) Validate(c echo.Context) error {
 		cookie, err := h.sessionManager.GenerateCookie(jwtToken)
 		if err != nil {
 			return fmt.Errorf("failed to create session token: %w", err)
+		}
+
+		err = storeSession(h.cfg, h.persister, token.UserID, rawToken, c, h.persister.GetConnection())
+		if err != nil {
+			return fmt.Errorf("failed to store session in DB: %w", err)
 		}
 
 		c.Response().Header().Set("X-Session-Lifetime", fmt.Sprintf("%d", cookie.MaxAge))

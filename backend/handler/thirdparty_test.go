@@ -13,13 +13,13 @@ import (
 	jwk2 "github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/stretchr/testify/suite"
-	auditlog "github.com/teamhanko/hanko/backend/audit_log"
-	"github.com/teamhanko/hanko/backend/config"
-	"github.com/teamhanko/hanko/backend/crypto/jwk"
-	"github.com/teamhanko/hanko/backend/dto"
-	"github.com/teamhanko/hanko/backend/session"
-	"github.com/teamhanko/hanko/backend/test"
-	"github.com/teamhanko/hanko/backend/utils"
+	auditlog "github.com/teamhanko/hanko/backend/v2/audit_log"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	"github.com/teamhanko/hanko/backend/v2/crypto/jwk/local_db"
+	"github.com/teamhanko/hanko/backend/v2/dto"
+	"github.com/teamhanko/hanko/backend/v2/session"
+	"github.com/teamhanko/hanko/backend/v2/test"
+	"github.com/teamhanko/hanko/backend/v2/utils"
 )
 
 func TestThirdPartySuite(t *testing.T) {
@@ -44,7 +44,7 @@ func (s *thirdPartySuite) setUpHandler(cfg *config.Config) *ThirdPartyHandler {
 	s.T().Helper()
 	auditLogger := auditlog.NewLogger(s.Storage, cfg.AuditLog)
 
-	jwkMngr, err := jwk.NewDefaultManager(cfg.Secrets.Keys, s.Storage.GetJwkPersister())
+	jwkMngr, err := local_db.NewDefaultManager(cfg.Secrets.Keys, s.Storage.GetJwkPersister())
 	s.Require().NoError(err)
 
 	sessionMngr, err := session.NewManager(jwkMngr, *cfg)
@@ -56,57 +56,61 @@ func (s *thirdPartySuite) setUpHandler(cfg *config.Config) *ThirdPartyHandler {
 
 func (s *thirdPartySuite) setUpConfig(enabledProviders []string, allowedRedirectURLs []string) *config.Config {
 	s.T().Helper()
-	cfg := &config.Config{
-		ThirdParty: config.ThirdParty{
-			Providers: config.ThirdPartyProviders{
-				Apple: config.ThirdPartyProvider{
-					Enabled:      false,
-					ClientID:     "fakeClientID",
-					Secret:       "fakeClientSecret",
-					AllowLinking: true,
-				},
-				Google: config.ThirdPartyProvider{
-					Enabled:      false,
-					ClientID:     "fakeClientID",
-					Secret:       "fakeClientSecret",
-					AllowLinking: true,
-				},
-				GitHub: config.ThirdPartyProvider{
-					Enabled:      false,
-					ClientID:     "fakeClientID",
-					Secret:       "fakeClientSecret",
-					AllowLinking: true,
-				},
-				Discord: config.ThirdPartyProvider{
-					Enabled:      false,
-					ClientID:     "fakeClientID",
-					Secret:       "fakeClientSecret",
-					AllowLinking: true,
-				},
-				Microsoft: config.ThirdPartyProvider{
-					Enabled:      false,
-					ClientID:     "fakeClientID",
-					Secret:       "fakeClientSecret",
-					AllowLinking: false,
-				},
+	cfg := config.DefaultConfig()
+	cfg.ThirdParty = config.ThirdParty{
+		Providers: config.ThirdPartyProviders{
+			Apple: config.ThirdPartyProvider{
+				ID:           "apple",
+				Enabled:      false,
+				ClientID:     "fakeClientID",
+				Secret:       "fakeClientSecret",
+				AllowLinking: true,
 			},
-			ErrorRedirectURL:    "https://error.test.example",
-			RedirectURL:         "https://api.test.example/callback",
-			AllowedRedirectURLS: allowedRedirectURLs,
+			Google: config.ThirdPartyProvider{
+				ID:           "google",
+				Enabled:      false,
+				ClientID:     "fakeClientID",
+				Secret:       "fakeClientSecret",
+				AllowLinking: true,
+			},
+			GitHub: config.ThirdPartyProvider{
+				ID:           "github",
+				Enabled:      false,
+				ClientID:     "fakeClientID",
+				Secret:       "fakeClientSecret",
+				AllowLinking: true,
+			},
+			Discord: config.ThirdPartyProvider{
+				ID:           "discord",
+				Enabled:      false,
+				ClientID:     "fakeClientID",
+				Secret:       "fakeClientSecret",
+				AllowLinking: true,
+			},
+			Microsoft: config.ThirdPartyProvider{
+				ID:           "microsoft",
+				Enabled:      false,
+				ClientID:     "fakeClientID",
+				Secret:       "fakeClientSecret",
+				AllowLinking: false,
+			},
+			Facebook: config.ThirdPartyProvider{
+				ID:           "facebook",
+				Enabled:      false,
+				ClientID:     "fakeClientID",
+				Secret:       "fakeClientSecret",
+				AllowLinking: false,
+			},
 		},
-		Secrets: config.Secrets{
-			Keys: []string{"thirty-two-byte-long-test-secret"},
-		},
-		AuditLog: config.AuditLog{
-			Storage: config.AuditLogStorage{Enabled: true},
-		},
-		Emails: config.Emails{
-			MaxNumOfAddresses: 5,
-		},
-		Account: config.Account{
-			AllowSignup: true,
-		},
+		ErrorRedirectURL:    "https://error.test.example",
+		RedirectURL:         "https://api.test.example/callback",
+		AllowedRedirectURLS: allowedRedirectURLs,
 	}
+
+	cfg.AuditLog.Storage.Enabled = true
+	cfg.AuditLog.Mask = false
+	cfg.Email.Limit = 5
+	cfg.Account.AllowSignup = true
 
 	for _, provider := range enabledProviders {
 		switch provider {
@@ -120,6 +124,8 @@ func (s *thirdPartySuite) setUpConfig(enabledProviders []string, allowedRedirect
 			cfg.ThirdParty.Providers.Discord.Enabled = true
 		case "microsoft":
 			cfg.ThirdParty.Providers.Microsoft.Enabled = true
+		case "facebook":
+			cfg.ThirdParty.Providers.Facebook.Enabled = true
 		}
 	}
 
@@ -137,15 +143,19 @@ func (s *thirdPartySuite) setUpFakeJwkSet() jwk2.Set {
 	return keySet
 }
 
-func (s *thirdPartySuite) setUpAppleIdToken(sub, aud, email string, emailVerified bool) string {
+func (s *thirdPartySuite) setUpAppleIdToken(sub, aud, email string, emailVerified bool, emailVerifiedTypeBool bool) string {
 	s.T().Helper()
 	token := jwt.New()
 	_ = token.Set(jwt.SubjectKey, sub)
 	_ = token.Set(jwt.IssuedAtKey, time.Now().UTC())
 	_ = token.Set(jwt.IssuerKey, "https://appleid.apple.com")
 	_ = token.Set(jwt.AudienceKey, aud)
-	_ = token.Set("email_verified", strconv.FormatBool(emailVerified))
 	_ = token.Set("email", email)
+	if emailVerifiedTypeBool {
+		_ = token.Set("email_verified", emailVerified)
+	} else {
+		_ = token.Set("email_verified", strconv.FormatBool(emailVerified))
+	}
 
 	generator := test.JwkManager{}
 	signingKey, err := generator.GetSigningKey()

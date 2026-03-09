@@ -3,12 +3,13 @@ package persistence
 import (
 	"fmt"
 	"github.com/gobuffalo/pop/v6"
-	"github.com/teamhanko/hanko/backend/persistence/models"
+	"github.com/teamhanko/hanko/backend/v2/persistence/models"
 )
 
 type PrimaryEmailPersister interface {
 	Create(models.PrimaryEmail) error
 	Update(models.PrimaryEmail) error
+	Delete(models.PrimaryEmail) error
 }
 
 type primaryEmailPersister struct {
@@ -40,6 +41,15 @@ func (p *primaryEmailPersister) Update(primaryEmail models.PrimaryEmail) error {
 
 	if vErr != nil && vErr.HasAny() {
 		return fmt.Errorf("primary email object validation failed: %w", vErr)
+	}
+
+	return nil
+}
+
+func (e *primaryEmailPersister) Delete(primaryEmail models.PrimaryEmail) error {
+	err := e.db.Destroy(&primaryEmail)
+	if err != nil {
+		return fmt.Errorf("failed to delete email: %w", err)
 	}
 
 	return nil

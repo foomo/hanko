@@ -4,19 +4,20 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/gofrs/uuid"
-	"github.com/stretchr/testify/suite"
-	"github.com/teamhanko/hanko/backend/config"
-	"github.com/teamhanko/hanko/backend/crypto/jwk"
-	"github.com/teamhanko/hanko/backend/dto"
-	"github.com/teamhanko/hanko/backend/persistence/models"
-	"github.com/teamhanko/hanko/backend/session"
-	"github.com/teamhanko/hanko/backend/test"
-	"golang.org/x/crypto/bcrypt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/gofrs/uuid"
+	"github.com/stretchr/testify/suite"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	"github.com/teamhanko/hanko/backend/v2/crypto/jwk/local_db"
+	"github.com/teamhanko/hanko/backend/v2/dto"
+	"github.com/teamhanko/hanko/backend/v2/persistence/models"
+	"github.com/teamhanko/hanko/backend/v2/session"
+	"github.com/teamhanko/hanko/backend/v2/test"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestPasscodeSuite(t *testing.T) {
@@ -38,8 +39,8 @@ func (s *passcodeSuite) TestPasscodeHandler_Init() {
 
 	cfg := func() *config.Config {
 		cfg := &test.DefaultConfig
-		cfg.Smtp.Host = s.EmailServer.SmtpHost
-		cfg.Smtp.Port = s.EmailServer.SmtpPort
+		cfg.EmailDelivery.SMTP.Host = s.EmailServer.SmtpHost
+		cfg.EmailDelivery.SMTP.Port = s.EmailServer.SmtpPort
 		return cfg
 	}
 
@@ -122,10 +123,12 @@ func (s *passcodeSuite) TestPasscodeHandler_Finish() {
 
 	hashedPasscode, err := bcrypt.GenerateFromPassword([]byte("123456"), 12)
 
+	userId := uuid.FromStringOrNil("b5dd5267-b462-48be-b70d-bcd6f1bbe7a5")
+	emailId := uuid.FromStringOrNil("51b7c175-ceb6-45ba-aae6-0092221c1b84")
 	passcode := models.Passcode{
 		ID:        uuid.FromStringOrNil("a2383922-dea3-46c8-be17-85b267c0d135"),
-		UserId:    uuid.FromStringOrNil("b5dd5267-b462-48be-b70d-bcd6f1bbe7a5"),
-		EmailID:   uuid.FromStringOrNil("51b7c175-ceb6-45ba-aae6-0092221c1b84"),
+		UserId:    &userId,
+		EmailID:   &emailId,
 		Ttl:       300,
 		Code:      string(hashedPasscode),
 		TryCount:  0,
@@ -135,8 +138,8 @@ func (s *passcodeSuite) TestPasscodeHandler_Finish() {
 
 	passcodeWithExpiredTimeout := models.Passcode{
 		ID:        uuid.FromStringOrNil("a2383922-dea3-46c8-be17-85b267c0d135"),
-		UserId:    uuid.FromStringOrNil("b5dd5267-b462-48be-b70d-bcd6f1bbe7a5"),
-		EmailID:   uuid.FromStringOrNil("51b7c175-ceb6-45ba-aae6-0092221c1b84"),
+		UserId:    &userId,
+		EmailID:   &emailId,
 		Ttl:       300,
 		Code:      string(hashedPasscode),
 		TryCount:  0,
@@ -144,10 +147,11 @@ func (s *passcodeSuite) TestPasscodeHandler_Finish() {
 		UpdatedAt: now,
 	}
 
+	emailIdNotAssigned := uuid.FromStringOrNil("7c4473b8-ddcc-480b-b01f-df89e99f74c9")
 	passcodeForNonAssignedEmail := models.Passcode{
 		ID:        uuid.FromStringOrNil("494129d5-76de-4fae-b07d-f2a521e1804d"),
-		UserId:    uuid.FromStringOrNil("b5dd5267-b462-48be-b70d-bcd6f1bbe7a5"),
-		EmailID:   uuid.FromStringOrNil("7c4473b8-ddcc-480b-b01f-df89e99f74c9"),
+		UserId:    &userId,
+		EmailID:   &emailIdNotAssigned,
 		Ttl:       300,
 		Code:      string(hashedPasscode),
 		TryCount:  0,
@@ -273,7 +277,7 @@ func (s *passcodeSuite) TestPasscodeHandler_Finish() {
 			err := s.LoadFixtures("../test/fixtures/passcode")
 			s.Require().NoError(err)
 
-			jwkManager, err := jwk.NewDefaultManager(test.DefaultConfig.Secrets.Keys, s.Storage.GetJwkPersister())
+			jwkManager, err := local_db.NewDefaultManager(test.DefaultConfig.Secrets.Keys, s.Storage.GetJwkPersister())
 			s.Require().NoError(err)
 			sessionManager, err := session.NewManager(jwkManager, test.DefaultConfig)
 			s.Require().NoError(err)
@@ -298,13 +302,17 @@ func (s *passcodeSuite) TestPasscodeHandler_Finish() {
 				req := httptest.NewRequest(http.MethodPost, "/passcode/login/finalize", bytes.NewReader(bodyJson))
 				req.Header.Set("Content-Type", "application/json")
 				if currentTest.sendSessionTokenInAuthHeader {
-					sessionToken, err := sessionManager.GenerateJWT(uuid.FromStringOrNil(currentTest.userId), nil)
+					sessionToken, _, err := sessionManager.GenerateJWT(dto.UserJWT{
+						UserID: currentTest.userId,
+					})
 					s.Require().NoError(err)
 					req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", sessionToken))
 				}
 
 				if currentTest.sendSessionTokenInCookie {
-					sessionToken, err := sessionManager.GenerateJWT(uuid.FromStringOrNil(currentTest.userId), nil)
+					sessionToken, _, err := sessionManager.GenerateJWT(dto.UserJWT{
+						UserID: currentTest.userId,
+					})
 					s.Require().NoError(err)
 
 					sessionCookie, err := sessionManager.GenerateCookie(sessionToken)

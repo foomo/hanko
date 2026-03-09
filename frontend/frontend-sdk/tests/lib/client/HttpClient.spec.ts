@@ -28,6 +28,7 @@ beforeEach(() => {
     cookieName: "hanko",
     localStorageKey: "hanko",
     timeout: 13000,
+    sessionTokenLocation: "cookie",
   });
   xhr = new XMLHttpRequest();
 });
@@ -49,7 +50,7 @@ describe("httpClient._fetch()", () => {
       "Content-Type",
       "application/json",
     );
-    expect(xhr.setRequestHeader).toHaveBeenCalledTimes(2);
+    expect(xhr.setRequestHeader).toHaveBeenCalledTimes(3);
     expect(xhr.open).toHaveBeenNthCalledWith(
       1,
       "GET",
@@ -73,7 +74,7 @@ describe("httpClient._fetch()", () => {
       "Authorization",
       `Bearer ${jwt}`,
     );
-    expect(xhr.setRequestHeader).toHaveBeenCalledTimes(3);
+    expect(xhr.setRequestHeader).toHaveBeenCalledTimes(4);
   });
 
   it("should handle onerror", async () => {
@@ -162,7 +163,6 @@ describe("httpClient.processResponseHeadersOnLogin()", () => {
   describe("when the x-auth-token is available in the response header", () => {
     const jwt = "test-jwt";
     const expirationSeconds = 7;
-    const userID = "test-user";
     const realLocation = window.location;
 
     beforeEach(() => {
@@ -209,6 +209,7 @@ describe("httpClient.processResponseHeadersOnLogin()", () => {
           cookieName: "hanko",
           localStorageKey: "hanko",
           timeout: 13000,
+          sessionTokenLocation: "cookie",
         });
         const xhr = new XMLHttpRequest();
         const response = new Response(xhr);
@@ -219,40 +220,19 @@ describe("httpClient.processResponseHeadersOnLogin()", () => {
         };
 
         jest.spyOn(response.xhr, "getResponseHeader");
-        jest.spyOn(client.passcodeState, "read");
-        jest.spyOn(client.passcodeState, "reset");
-        jest.spyOn(client.passcodeState, "write");
-        jest.spyOn(client.sessionState, "read");
         jest.spyOn(client.cookie, "setAuthCookie");
-        jest.spyOn(client.sessionState, "setExpirationSeconds");
-        jest.spyOn(client.sessionState, "setUserID");
-        jest.spyOn(client.sessionState, "write");
 
-        client.processResponseHeadersOnLogin(userID, response);
+        client.processHeaders(xhr);
 
-        expect(response.xhr.getResponseHeader).toBeCalledTimes(2);
-        expect(client.passcodeState.read).toBeCalledTimes(1);
-        expect(client.passcodeState.reset).toBeCalledTimes(1);
-        expect(client.passcodeState.write).toBeCalledTimes(1);
+        expect(response.xhr.getResponseHeader).toHaveBeenCalledTimes(2);
 
         expect(client.cookie.setAuthCookie).toHaveBeenCalledTimes(1);
-        expect(client.sessionState.read).toHaveBeenCalledTimes(1);
-        expect(client.sessionState.setExpirationSeconds).toHaveBeenCalledTimes(
-          1,
-        );
-        expect(client.sessionState.setUserID).toHaveBeenCalledTimes(1);
-        expect(client.sessionState.write).toHaveBeenCalledTimes(1);
-
-        expect(client.sessionState.setExpirationSeconds).toHaveBeenCalledWith(
-          expirationSeconds,
-        );
-        expect(client.sessionState.setUserID).toHaveBeenCalledWith(userID);
 
         expect(client.cookie.setAuthCookie).toHaveBeenCalledWith(jwt, {
           secure,
           expires: new Date(fakeTimerNow + expirationSeconds * 1000),
         });
-        expect(client.cookie.setAuthCookie).toBeCalledTimes(1);
+        expect(client.cookie.setAuthCookie).toHaveBeenCalledTimes(1);
       },
     );
   });

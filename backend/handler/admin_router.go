@@ -2,15 +2,18 @@ package handler
 
 import (
 	"fmt"
+
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/teamhanko/hanko/backend/config"
-	"github.com/teamhanko/hanko/backend/crypto/jwk"
-	"github.com/teamhanko/hanko/backend/dto"
-	hankoMiddleware "github.com/teamhanko/hanko/backend/middleware"
-	"github.com/teamhanko/hanko/backend/persistence"
-	"github.com/teamhanko/hanko/backend/template"
+	auditlog "github.com/teamhanko/hanko/backend/v2/audit_log"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	"github.com/teamhanko/hanko/backend/v2/crypto/jwk"
+	"github.com/teamhanko/hanko/backend/v2/dto"
+	hankoMiddleware "github.com/teamhanko/hanko/backend/v2/middleware"
+	"github.com/teamhanko/hanko/backend/v2/persistence"
+	"github.com/teamhanko/hanko/backend/v2/session"
+	"github.com/teamhanko/hanko/backend/v2/template"
 )
 
 func NewAdminRouter(cfg *config.Config, persister persistence.Persister, prometheus echo.MiddlewareFunc) *echo.Echo {
@@ -44,21 +47,32 @@ func NewAdminRouter(cfg *config.Config, persister persistence.Persister, prometh
 	health.GET("/alive", healthHandler.Alive)
 	health.GET("/ready", healthHandler.Ready)
 
-	jwkManager, err := jwk.NewDefaultManager(cfg.Secrets.Keys, persister.GetJwkPersister())
+	jwkManager, err := jwk.NewManager(cfg.Secrets, persister)
 	if err != nil {
 		panic(fmt.Errorf("failed to create jwk manager: %w", err))
 	}
+	sessionManager, err := session.NewManager(jwkManager, *cfg)
+	if err != nil {
+		panic(fmt.Errorf("failed to create session generator: %w", err))
+	}
 
-	webhookMiddleware := hankoMiddleware.WebhookMiddleware(cfg, jwkManager, persister.GetWebhookPersister(nil))
+	webhookMiddleware := hankoMiddleware.WebhookMiddleware(cfg, jwkManager, persister)
+	auditLogger := auditlog.NewLogger(persister, cfg.AuditLog)
 
 	userHandler := NewUserHandlerAdmin(persister)
 	emailHandler := NewEmailAdminHandler(cfg, persister)
+	sessionsHandler := NewSessionAdminHandler(cfg, persister, sessionManager, auditLogger)
 
 	user := g.Group("/users")
 	user.GET("", userHandler.List)
 	user.POST("", userHandler.Create, webhookMiddleware)
 	user.GET("/:id", userHandler.Get)
 	user.DELETE("/:id", userHandler.Delete, webhookMiddleware)
+	user.PATCH("/:id", userHandler.Patch)
+
+	metadataHandler := NewMetadataAdminHandler(persister)
+	user.PATCH("/:id/metadata", metadataHandler.PatchMetadata)
+	user.GET("/:id/metadata", metadataHandler.GetMetadata)
 
 	email := user.Group("/:user_id/emails", webhookMiddleware)
 	email.GET("", emailHandler.List)
@@ -66,6 +80,28 @@ func NewAdminRouter(cfg *config.Config, persister persistence.Persister, prometh
 	email.GET("/:email_id", emailHandler.Get)
 	email.DELETE("/:email_id", emailHandler.Delete)
 	email.POST("/:email_id/set_primary", emailHandler.SetPrimaryEmail)
+
+	webauthnCredentialHandler := NewWebauthnCredentialAdminHandler(persister)
+	webauthnCredentials := user.Group("/:user_id/webauthn_credentials")
+	webauthnCredentials.GET("", webauthnCredentialHandler.List)
+	webauthnCredentials.GET("/:credential_id", webauthnCredentialHandler.Get)
+	webauthnCredentials.DELETE("/:credential_id", webauthnCredentialHandler.Delete)
+
+	passwordCredentialHandler := NewPasswordAdminHandler(persister)
+	passwordCredentials := user.Group("/:user_id/password")
+	passwordCredentials.GET("", passwordCredentialHandler.Get)
+	passwordCredentials.POST("", passwordCredentialHandler.Create)
+	passwordCredentials.PUT("", passwordCredentialHandler.Update)
+	passwordCredentials.DELETE("", passwordCredentialHandler.Delete)
+
+	userSessions := user.Group("/:user_id/sessions")
+	userSessions.GET("", sessionsHandler.List)
+	userSessions.DELETE("/:session_id", sessionsHandler.Delete)
+
+	otpHandler := NewOTPAdminHandler(persister)
+	otp := user.Group("/:user_id/otp")
+	otp.GET("", otpHandler.Get)
+	otp.DELETE("", otpHandler.Delete)
 
 	auditLogHandler := NewAuditLogHandler(persister)
 
@@ -79,6 +115,9 @@ func NewAdminRouter(cfg *config.Config, persister persistence.Persister, prometh
 	webhooks.GET("/:id", webhookHandler.Get)
 	webhooks.DELETE("/:id", webhookHandler.Delete)
 	webhooks.PUT("/:id", webhookHandler.Update)
+
+	sessions := g.Group("/sessions")
+	sessions.POST("", sessionsHandler.Generate)
 
 	return e
 }

@@ -2,58 +2,38 @@ package webhooks
 
 import (
 	"fmt"
+	"time"
+
+	"github.com/gobuffalo/pop/v6"
 	"github.com/labstack/echo/v4"
 	"github.com/lestrrat-go/jwx/v2/jwt"
-	"github.com/teamhanko/hanko/backend/config"
-	hankoJwk "github.com/teamhanko/hanko/backend/crypto/jwk"
-	hankoJwt "github.com/teamhanko/hanko/backend/crypto/jwt"
-	"github.com/teamhanko/hanko/backend/persistence"
-	"github.com/teamhanko/hanko/backend/webhooks/events"
-	"time"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	"github.com/teamhanko/hanko/backend/v2/crypto/jwk"
+	"github.com/teamhanko/hanko/backend/v2/persistence"
+	"github.com/teamhanko/hanko/backend/v2/webhooks/events"
 )
 
 type Manager interface {
-	Trigger(evt events.Event, data interface{})
+	Trigger(tx *pop.Connection, evt events.Event, data interface{})
 	GenerateJWT(data interface{}, event events.Event) (string, error)
 }
 
 type manager struct {
 	logger          echo.Logger
 	webhooks        Webhooks
-	jwtGenerator    hankoJwt.Generator
+	jwtGenerator    jwk.Generator
 	audience        []string
-	persister       persistence.WebhookPersister
+	persister       persistence.Persister
 	canExpireAtTime bool
 }
 
-func NewManager(cfg *config.Config, persister persistence.WebhookPersister, jwkManager hankoJwk.Manager, logger echo.Logger) (Manager, error) {
+func NewManager(cfg *config.Config, persister persistence.Persister, jwtGenerator jwk.Generator, logger echo.Logger) (Manager, error) {
 	hooks := make(Webhooks, 0)
 
 	if cfg.Webhooks.Enabled {
 		for _, cfgHook := range cfg.Webhooks.Hooks {
 			hooks = append(hooks, NewConfigHook(cfgHook, logger))
 		}
-	}
-
-	const generateFailureMessage = "failed to create webhook jwt generator: %w"
-
-	signatureKey, err := jwkManager.GetSigningKey()
-	if err != nil {
-		errMessage := fmt.Errorf(generateFailureMessage, err)
-		logger.Error(errMessage)
-		return nil, errMessage
-	}
-	verificationKeys, err := jwkManager.GetPublicKeys()
-	if err != nil {
-		errMessage := fmt.Errorf(generateFailureMessage, err)
-		logger.Error(errMessage)
-		return nil, errMessage
-	}
-	g, err := hankoJwt.NewGenerator(signatureKey, verificationKeys)
-	if err != nil {
-		errMessage := fmt.Errorf(generateFailureMessage, err)
-		logger.Error(errMessage)
-		return nil, errMessage
 	}
 
 	var audience []string
@@ -66,16 +46,16 @@ func NewManager(cfg *config.Config, persister persistence.WebhookPersister, jwkM
 	return &manager{
 		logger:          logger,
 		webhooks:        hooks,
-		jwtGenerator:    g,
+		jwtGenerator:    jwtGenerator,
 		audience:        audience,
 		persister:       persister,
 		canExpireAtTime: cfg.Webhooks.AllowTimeExpiration,
 	}, nil
 }
 
-func (m *manager) Trigger(evt events.Event, data interface{}) {
+func (m *manager) Trigger(tx *pop.Connection, evt events.Event, data interface{}) {
 	// add db hooks - Done here to prevent a restart in case a hook is added or removed from the database
-	dbHooks, err := m.persister.List(false)
+	dbHooks, err := m.persister.GetWebhookPersister(tx).List(false)
 	if err != nil {
 		m.logger.Error(fmt.Errorf("unable to get database webhooks: %w", err))
 		return
@@ -83,7 +63,7 @@ func (m *manager) Trigger(evt events.Event, data interface{}) {
 
 	hooks := m.webhooks
 	for _, dbHook := range dbHooks {
-		hooks = append(hooks, NewDatabaseHook(dbHook, m.persister, m.logger))
+		hooks = append(hooks, NewDatabaseHook(dbHook, m.persister.GetWebhookPersister(nil), m.logger))
 	}
 
 	dataToken, err := m.GenerateJWT(data, evt)

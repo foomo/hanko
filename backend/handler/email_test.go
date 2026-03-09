@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"github.com/gofrs/uuid"
 	"github.com/stretchr/testify/suite"
-	"github.com/teamhanko/hanko/backend/config"
-	"github.com/teamhanko/hanko/backend/crypto/jwk"
-	"github.com/teamhanko/hanko/backend/dto"
-	"github.com/teamhanko/hanko/backend/session"
-	"github.com/teamhanko/hanko/backend/test"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	"github.com/teamhanko/hanko/backend/v2/dto"
+	"github.com/teamhanko/hanko/backend/v2/test"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -26,7 +24,7 @@ type emailSuite struct {
 }
 
 func (s *emailSuite) TestEmailHandler_New() {
-	emailHandler := NewEmailHandler(&config.Config{}, s.Storage, sessionManager{}, test.NewAuditLogger())
+	emailHandler := NewEmailHandler(&config.Config{}, s.Storage, test.NewAuditLogger())
 	s.NotEmpty(emailHandler)
 }
 
@@ -39,11 +37,6 @@ func (s *emailSuite) TestEmailHandler_List() {
 	s.Require().NoError(err)
 
 	e := NewPublicRouter(&test.DefaultConfig, s.Storage, nil, nil)
-
-	jwkManager, err := jwk.NewDefaultManager(test.DefaultConfig.Secrets.Keys, s.Storage.GetJwkPersister())
-	s.Require().NoError(err)
-	sessionManager, err := session.NewManager(jwkManager, test.DefaultConfig)
-	s.Require().NoError(err)
 
 	tests := []struct {
 		name          string
@@ -64,9 +57,7 @@ func (s *emailSuite) TestEmailHandler_List() {
 
 	for _, currentTest := range tests {
 		s.Run(currentTest.name, func() {
-			token, err := sessionManager.GenerateJWT(currentTest.userId, nil)
-			s.Require().NoError(err)
-			cookie, err := sessionManager.GenerateCookie(token)
+			cookie, err := generateSessionCookie(s.Storage, currentTest.userId)
 			s.Require().NoError(err)
 
 			req := httptest.NewRequest(http.MethodGet, "/emails", nil)
@@ -169,17 +160,10 @@ func (s *emailSuite) TestEmailHandler_Create() {
 		s.Run(currentTest.name, func() {
 			cfg := test.DefaultConfig
 			cfg.AuditLog.Storage.Enabled = true
-			cfg.Emails.RequireVerification = currentTest.requiresVerification
-			cfg.Emails.MaxNumOfAddresses = currentTest.maxNumberOfAddresses
+			cfg.Email.RequireVerification = currentTest.requiresVerification
+			cfg.Email.Limit = currentTest.maxNumberOfAddresses
 			e := NewPublicRouter(&cfg, s.Storage, nil, nil)
-			jwkManager, err := jwk.NewDefaultManager(cfg.Secrets.Keys, s.Storage.GetJwkPersister())
-			s.Require().NoError(err)
-			sessionManager, err := session.NewManager(jwkManager, cfg)
-			s.Require().NoError(err)
-
-			token, err := sessionManager.GenerateJWT(currentTest.userId, nil)
-			s.Require().NoError(err)
-			cookie, err := sessionManager.GenerateCookie(token)
+			cookie, err := generateSessionCookie(s.Storage, currentTest.userId)
 			s.Require().NoError(err)
 
 			body := dto.EmailCreateRequest{
@@ -235,19 +219,11 @@ func (s *emailSuite) TestEmailHandler_SetPrimaryEmail() {
 
 	e := NewPublicRouter(&test.DefaultConfig, s.Storage, nil, nil)
 
-	jwkManager, err := jwk.NewDefaultManager(test.DefaultConfig.Secrets.Keys, s.Storage.GetJwkPersister())
-	s.Require().NoError(err)
-	sessionManager, err := session.NewManager(jwkManager, test.DefaultConfig)
-	s.Require().NoError(err)
-
 	oldPrimaryEmailId := uuid.FromStringOrNil("51b7c175-ceb6-45ba-aae6-0092221c1b84")
 	newPrimaryEmailId := uuid.FromStringOrNil("8bb4c8a7-a3e6-48bb-b54f-20e3b485ab33")
 	userId := uuid.FromStringOrNil("b5dd5267-b462-48be-b70d-bcd6f1bbe7a5")
-
-	token, err := sessionManager.GenerateJWT(userId, nil)
-	s.NoError(err)
-	cookie, err := sessionManager.GenerateCookie(token)
-	s.NoError(err)
+	cookie, err := generateSessionCookie(s.Storage, userId)
+	s.Require().NoError(err)
 
 	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/emails/%s/set_primary", newPrimaryEmailId), nil)
 	req.AddCookie(cookie)
@@ -280,15 +256,8 @@ func (s *emailSuite) TestEmailHandler_Delete() {
 	e := NewPublicRouter(&test.DefaultConfig, s.Storage, nil, nil)
 	userId := uuid.FromStringOrNil("b5dd5267-b462-48be-b70d-bcd6f1bbe7a5")
 
-	jwkManager, err := jwk.NewDefaultManager(test.DefaultConfig.Secrets.Keys, s.Storage.GetJwkPersister())
+	cookie, err := generateSessionCookie(s.Storage, userId)
 	s.Require().NoError(err)
-	sessionManager, err := session.NewManager(jwkManager, test.DefaultConfig)
-	s.Require().NoError(err)
-
-	token, err := sessionManager.GenerateJWT(userId, nil)
-	s.NoError(err)
-	cookie, err := sessionManager.GenerateCookie(token)
-	s.NoError(err)
 
 	tests := []struct {
 		name          string

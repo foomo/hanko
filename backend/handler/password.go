@@ -11,13 +11,13 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/sethvargo/go-limiter"
-	auditlog "github.com/teamhanko/hanko/backend/audit_log"
-	"github.com/teamhanko/hanko/backend/config"
-	"github.com/teamhanko/hanko/backend/dto"
-	"github.com/teamhanko/hanko/backend/persistence"
-	"github.com/teamhanko/hanko/backend/persistence/models"
-	"github.com/teamhanko/hanko/backend/rate_limiter"
-	"github.com/teamhanko/hanko/backend/session"
+	auditlog "github.com/teamhanko/hanko/backend/v2/audit_log"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	"github.com/teamhanko/hanko/backend/v2/dto"
+	"github.com/teamhanko/hanko/backend/v2/persistence"
+	"github.com/teamhanko/hanko/backend/v2/persistence/models"
+	"github.com/teamhanko/hanko/backend/v2/rate_limiter"
+	"github.com/teamhanko/hanko/backend/v2/session"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -44,7 +44,7 @@ func NewPasswordHandler(persister persistence.Persister, sessionManager session.
 }
 
 type PasswordSetBody struct {
-	UserID   string `json:"user_id" validate:"required,uuid4"`
+	UserID   string `json:"user_id" validate:"required,uuid"`
 	Password string `json:"password" validate:"required"`
 }
 
@@ -74,12 +74,12 @@ func (h *PasswordHandler) Set(c echo.Context) error {
 	}
 
 	pwBytes := []byte(body.Password)
-	if utf8.RuneCountInString(body.Password) < h.cfg.Password.MinPasswordLength { // use utf8.RuneCountInString, so utf8 characters would count as 1
+	if utf8.RuneCountInString(body.Password) < h.cfg.Password.MinLength { // use utf8.RuneCountInString, so utf8 characters would count as 1
 		err = h.auditLogger.Create(c, models.AuditLogPasswordSetFailed, user, fmt.Errorf("password too short"))
 		if err != nil {
 			return fmt.Errorf("failed to create audit log: %w", err)
 		}
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("password must be at least %d characters long", h.cfg.Password.MinPasswordLength))
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("password must be at least %d characters long", h.cfg.Password.MinLength))
 	}
 
 	if len(pwBytes) > 72 {
@@ -151,7 +151,7 @@ func (h *PasswordHandler) Set(c echo.Context) error {
 }
 
 type PasswordLoginBody struct {
-	UserId   string `json:"user_id" validate:"required,uuid4"`
+	UserId   string `json:"user_id" validate:"required,uuid"`
 	Password string `json:"password" validate:"required"`
 }
 
@@ -219,12 +219,15 @@ func (h *PasswordHandler) Login(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusUnauthorized).SetInternal(err)
 	}
 
-	var emailJwt *dto.EmailJwt
+	var emailJwt *dto.EmailJWT
 	if e := user.Emails.GetPrimary(); e != nil {
-		emailJwt = dto.JwtFromEmailModel(e)
+		emailJwt = dto.EmailJWTFromEmailModel(e)
 	}
 
-	token, err := h.sessionManager.GenerateJWT(pw.UserId, emailJwt)
+	token, rawToken, err := h.sessionManager.GenerateJWT(dto.UserJWT{
+		UserID: pw.UserId.String(),
+		Email:  emailJwt,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to generate jwt: %w", err)
 	}
@@ -232,6 +235,11 @@ func (h *PasswordHandler) Login(c echo.Context) error {
 	cookie, err := h.sessionManager.GenerateCookie(token)
 	if err != nil {
 		return fmt.Errorf("failed to create session cookie: %w", err)
+	}
+
+	err = storeSession(h.cfg, h.persister, userId, rawToken, c, h.persister.GetConnection())
+	if err != nil {
+		return fmt.Errorf("failed to store session in DB: %w", err)
 	}
 
 	c.Response().Header().Set("X-Session-Lifetime", fmt.Sprintf("%d", cookie.MaxAge))

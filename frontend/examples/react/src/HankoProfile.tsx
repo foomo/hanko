@@ -1,4 +1,4 @@
-import React, {
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -10,7 +10,7 @@ import styles from "./Todo.module.css";
 import { useNavigate } from "react-router-dom";
 import { SessionExpiredModal } from "./SessionExpiredModal";
 
-const api = process.env.REACT_APP_HANKO_API!;
+const api = import.meta.env.VITE_HANKO_API!;
 
 function HankoProfile() {
   const navigate = useNavigate();
@@ -19,7 +19,7 @@ function HankoProfile() {
   const modalRef = useRef<HTMLDialogElement>(null);
 
   const logout = () => {
-    hankoClient.user.logout().catch(setError);
+    hankoClient.logout().catch(setError);
   };
 
   const redirectToTodo = () => {
@@ -35,9 +35,11 @@ function HankoProfile() {
   }, []);
 
   useEffect(() => {
-    if (!hankoClient.session.isValid()) {
-      redirectToLogin();
-    }
+    hankoClient.validateSession().then(({is_valid}) => {
+      if (!is_valid) {
+        redirectToLogin();
+      }
+    }).catch(setError);
   }, [hankoClient, redirectToLogin]);
 
 

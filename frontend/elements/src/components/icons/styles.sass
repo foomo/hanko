@@ -35,7 +35,6 @@
 .exclamationMark
   @extend .icon
   fill: variables.$error-color
-  padding: 1px 6px 0 4px
 
 // Loading Spinner Styles
 
@@ -51,6 +50,7 @@
   height: 100%
   margin: 0 5px
   justify-content: inherit
+  flex-wrap: inherit
 
   &.centerContent
     justify-content: center
@@ -101,3 +101,12 @@
   &.red
     fill: #F25022
 
+.facebookIcon
+  &.outline
+    fill: #0866FF
+  &.disabledOutline
+    fill: variables.$color-shade-1
+  &.letter
+    fill: #FFFFFF
+  &.disabledLetter
+    fill: variables.$color-shade-2

@@ -3,7 +3,8 @@ package thirdparty
 import (
 	"context"
 	"errors"
-	"github.com/teamhanko/hanko/backend/config"
+
+	"github.com/teamhanko/hanko/backend/v2/config"
 	"golang.org/x/oauth2"
 )
 
@@ -17,18 +18,22 @@ const (
 
 var DefaultGoogleScopes = []string{
 	"email",
+	"profile",
 }
 
 type googleProvider struct {
-	*oauth2.Config
+	config      config.ThirdPartyProvider
+	oauthConfig *oauth2.Config
 }
 
 type GoogleUser struct {
 	ID            string `json:"sub"`
 	Name          string `json:"name"`
-	AvatarURL     string `json:"picture"`
+	Picture       string `json:"picture"`
 	Email         string `json:"email"`
 	EmailVerified bool   `json:"email_verified"`
+	GivenName     string `json:"given_name"`
+	FamilyName    string `json:"family_name"`
 }
 
 // NewGoogleProvider creates a Google third party provider.
@@ -38,7 +43,8 @@ func NewGoogleProvider(config config.ThirdPartyProvider, redirectURL string) (OA
 	}
 
 	return &googleProvider{
-		Config: &oauth2.Config{
+		config: config,
+		oauthConfig: &oauth2.Config{
 			ClientID:     config.ClientID,
 			ClientSecret: config.Secret,
 			Endpoint: oauth2.Endpoint{
@@ -51,13 +57,22 @@ func NewGoogleProvider(config config.ThirdPartyProvider, redirectURL string) (OA
 	}, nil
 }
 
-func (g googleProvider) GetOAuthToken(code string) (*oauth2.Token, error) {
-	return g.Exchange(context.Background(), code)
+func (g googleProvider) AuthCodeURL(state string, opts ...oauth2.AuthCodeOption) string {
+
+	if prompt := g.config.Prompt; prompt != "" {
+		opts = append(opts, oauth2.SetAuthURLParam("prompt", prompt))
+	}
+
+	return g.oauthConfig.AuthCodeURL(state, opts...)
+}
+
+func (g googleProvider) GetOAuthToken(code string, opts ...oauth2.AuthCodeOption) (*oauth2.Token, error) {
+	return g.oauthConfig.Exchange(context.Background(), code, opts...)
 }
 
 func (g googleProvider) GetUserData(token *oauth2.Token) (*UserData, error) {
 	var user GoogleUser
-	if err := makeRequest(token, g.Config, GoogleUserInfoEndpoint, &user); err != nil {
+	if err := makeRequest(token, g.oauthConfig, GoogleUserInfoEndpoint, &user); err != nil {
 		return nil, err
 	}
 
@@ -79,14 +94,16 @@ func (g googleProvider) GetUserData(token *oauth2.Token) (*UserData, error) {
 		Issuer:        GoogleAuthBase,
 		Subject:       user.ID,
 		Name:          user.Name,
-		Picture:       user.AvatarURL,
+		Picture:       user.Picture,
 		Email:         user.Email,
 		EmailVerified: user.EmailVerified,
+		GivenName:     user.GivenName,
+		FamilyName:    user.FamilyName,
 	}
 
 	return data, nil
 }
 
-func (g googleProvider) Name() string {
-	return "google"
+func (g googleProvider) ID() string {
+	return g.config.ID
 }

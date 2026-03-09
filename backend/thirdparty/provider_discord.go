@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/teamhanko/hanko/backend/config"
+	"github.com/teamhanko/hanko/backend/v2/config"
 	"golang.org/x/oauth2"
 )
 
@@ -22,7 +22,8 @@ var DefaultDiscordScopes = []string{
 }
 
 type discordProvider struct {
-	*oauth2.Config
+	config      config.ThirdPartyProvider
+	oauthConfig *oauth2.Config
 }
 
 type DiscordUser struct {
@@ -41,7 +42,8 @@ func NewDiscordProvider(config config.ThirdPartyProvider, redirectURL string) (O
 	}
 
 	return &discordProvider{
-		Config: &oauth2.Config{
+		config: config,
+		oauthConfig: &oauth2.Config{
 			ClientID:     config.ClientID,
 			ClientSecret: config.Secret,
 			Endpoint: oauth2.Endpoint{
@@ -54,13 +56,22 @@ func NewDiscordProvider(config config.ThirdPartyProvider, redirectURL string) (O
 	}, nil
 }
 
-func (g discordProvider) GetOAuthToken(code string) (*oauth2.Token, error) {
-	return g.Exchange(context.Background(), code)
+func (p discordProvider) AuthCodeURL(state string, opts ...oauth2.AuthCodeOption) string {
+
+	if prompt := p.config.Prompt; prompt != "" {
+		opts = append(opts, oauth2.SetAuthURLParam("prompt", prompt))
+	}
+
+	return p.oauthConfig.AuthCodeURL(state, opts...)
+}
+
+func (g discordProvider) GetOAuthToken(code string, opts ...oauth2.AuthCodeOption) (*oauth2.Token, error) {
+	return g.oauthConfig.Exchange(context.Background(), code, opts...)
 }
 
 func (g discordProvider) GetUserData(token *oauth2.Token) (*UserData, error) {
 	var user DiscordUser
-	if err := makeRequest(token, g.Config, DiscordUserInfoEndpoint, &user); err != nil {
+	if err := makeRequest(token, g.oauthConfig, DiscordUserInfoEndpoint, &user); err != nil {
 		return nil, err
 	}
 
@@ -98,6 +109,6 @@ func (g discordProvider) buildAvatarURL(userID string, avatarHash string) string
 	return fmt.Sprintf("https://cdn.discordapp.com/avatars/%s/%s.png", userID, avatarHash)
 }
 
-func (g discordProvider) Name() string {
-	return "discord"
+func (g discordProvider) ID() string {
+	return g.config.ID
 }

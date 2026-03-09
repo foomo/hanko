@@ -7,31 +7,28 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/lestrrat-go/jwx/v2/jwt"
-	auditlog "github.com/teamhanko/hanko/backend/audit_log"
-	"github.com/teamhanko/hanko/backend/config"
-	"github.com/teamhanko/hanko/backend/dto"
-	"github.com/teamhanko/hanko/backend/persistence"
-	"github.com/teamhanko/hanko/backend/persistence/models"
-	"github.com/teamhanko/hanko/backend/session"
-	"github.com/teamhanko/hanko/backend/webhooks/events"
-	"github.com/teamhanko/hanko/backend/webhooks/utils"
+	auditlog "github.com/teamhanko/hanko/backend/v2/audit_log"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	"github.com/teamhanko/hanko/backend/v2/dto"
+	"github.com/teamhanko/hanko/backend/v2/persistence"
+	"github.com/teamhanko/hanko/backend/v2/persistence/models"
+	"github.com/teamhanko/hanko/backend/v2/webhooks/events"
+	"github.com/teamhanko/hanko/backend/v2/webhooks/utils"
 	"net/http"
 	"strings"
 )
 
 type EmailHandler struct {
-	persister      persistence.Persister
-	cfg            *config.Config
-	sessionManager session.Manager
-	auditLogger    auditlog.Logger
+	persister   persistence.Persister
+	cfg         *config.Config
+	auditLogger auditlog.Logger
 }
 
-func NewEmailHandler(cfg *config.Config, persister persistence.Persister, sessionManager session.Manager, auditLogger auditlog.Logger) *EmailHandler {
+func NewEmailHandler(cfg *config.Config, persister persistence.Persister, auditLogger auditlog.Logger) *EmailHandler {
 	return &EmailHandler{
-		persister:      persister,
-		cfg:            cfg,
-		sessionManager: sessionManager,
-		auditLogger:    auditLogger,
+		persister:   persister,
+		cfg:         cfg,
+		auditLogger: auditLogger,
 	}
 }
 
@@ -54,7 +51,7 @@ func (h *EmailHandler) List(c echo.Context) error {
 	response := make([]*dto.EmailResponse, len(emails))
 
 	for i := range emails {
-		response[i] = dto.FromEmailModel(&emails[i])
+		response[i] = dto.FromEmailModel(&emails[i], h.cfg)
 	}
 
 	return c.JSON(http.StatusOK, response)
@@ -83,7 +80,7 @@ func (h *EmailHandler) Create(c echo.Context) error {
 		return fmt.Errorf("failed to count user emails: %w", err)
 	}
 
-	if emailCount >= h.cfg.Emails.MaxNumOfAddresses {
+	if emailCount >= h.cfg.Email.Limit {
 		return echo.NewHTTPError(http.StatusConflict).SetInternal(errors.New("max number of email addresses reached"))
 	}
 
@@ -107,7 +104,7 @@ func (h *EmailHandler) Create(c echo.Context) error {
 				return echo.NewHTTPError(http.StatusBadRequest).SetInternal(errors.New("email address already exists"))
 			}
 
-			if !h.cfg.Emails.RequireVerification {
+			if !h.cfg.Email.RequireVerification {
 				// Email verification is currently not required and there is no user assigned to the existing email
 				// address. This can happen, when email verification was turned on before, because then the email
 				// address will be assigned to the user only after passcode verification. The email was left unassigned
@@ -121,7 +118,7 @@ func (h *EmailHandler) Create(c echo.Context) error {
 			}
 		} else {
 			// The email address has not been registered so far.
-			if h.cfg.Emails.RequireVerification {
+			if h.cfg.Email.RequireVerification {
 				// The email address will be assigned to the user only after passcode verification.
 				email = models.NewEmail(nil, newEmailAddress)
 			} else {
@@ -140,7 +137,7 @@ func (h *EmailHandler) Create(c echo.Context) error {
 			return fmt.Errorf("failed to create audit log: %w", err)
 		}
 
-		if !h.cfg.Emails.RequireVerification {
+		if !h.cfg.Email.RequireVerification {
 			var evt events.Event
 
 			if len(user.Emails) >= 1 {

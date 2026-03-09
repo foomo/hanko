@@ -1,41 +1,23 @@
 import {
   SessionDetail,
   CustomEventWithDetail,
-  AuthFlowCompletedDetail,
   sessionCreatedType,
   sessionExpiredType,
   userDeletedType,
-  authFlowCompletedType,
   userLoggedOutType,
+  flowAfterStateChangeType,
+  FlowDetail,
+  flowBeforeStateChangeType,
 } from "./CustomEvents";
-import { SessionState } from "../state/session/SessionState";
-
-/**
- * Options for Dispatcher
- *
- * @category SDK
- * @subcategory Internal
- * @property {string} localStorageKey - The prefix / name of the local storage keys.
- */
-interface DispatcherOptions {
-  localStorageKey: string;
-}
 
 /**
  * A class that dispatches custom events.
  *
  * @category SDK
  * @subcategory Internal
- * @param {DispatcherOptions} options - The options that can be used
  */
 export class Dispatcher {
   _dispatchEvent = document.dispatchEvent.bind(document);
-  _sessionState: SessionState;
-
-  // eslint-disable-next-line require-jsdoc
-  constructor(options: DispatcherOptions) {
-    this._sessionState = new SessionState({ ...options });
-  }
 
   /**
    * Dispatches a custom event.
@@ -79,12 +61,16 @@ export class Dispatcher {
   }
 
   /**
-   * Dispatches a "hanko-auth-flow-completed" event to the document with the specified detail.
-   *
-   * @param {AuthFlowCompletedDetail} detail - The event detail.
+   * Dispatches a "hanko-after-state-change" event to the document.
    */
-  public dispatchAuthFlowCompletedEvent(detail: AuthFlowCompletedDetail) {
-    this._sessionState.read().setAuthFlowCompleted(true).write();
-    this.dispatch(authFlowCompletedType, detail);
+  public dispatchAfterStateChangeEvent(detail: FlowDetail) {
+    this.dispatch(flowAfterStateChangeType, detail);
+  }
+
+  /**
+   * Dispatches a "hanko-before-state-change" event to the document.
+   */
+  public dispatchBeforeStateChangeEvent(detail: FlowDetail) {
+    this.dispatch(flowBeforeStateChangeType, detail);
   }
 }

@@ -1,3 +1,6 @@
+import { Claims } from "../Dto";
+import { AnyState } from "../flow-api/types/flow";
+
 /**
  * The type of the `hanko-session-created` event.
  * @typedef {string} sessionCreatedType
@@ -30,12 +33,41 @@ export const userLoggedOutType: "hanko-user-logged-out" =
 export const userDeletedType: "hanko-user-deleted" = "hanko-user-deleted";
 
 /**
- * The type of the `hanko-auth-flow-completed` event.
- * @typedef {string} authFlowCompletedType
+ * The type of the `hanko-user-logged-in` event.
+ * @typedef {string} userLoggedInType
  * @memberOf Listener
  */
-export const authFlowCompletedType: "hanko-auth-flow-completed" =
-  "hanko-auth-flow-completed";
+export const userLoggedInType: "hanko-user-logged-in" = "hanko-user-logged-in";
+
+/**
+ * The type of the `hanko-user-created` event.
+ * @typedef {string} userCreatedType
+ * @memberOf Listener
+ */
+export const userCreatedType: "hanko-user-created" = "hanko-user-created";
+
+/**
+ * The type of the `hanko-after-state-change` event.
+ * @typedef {string} flowAfterStateChangeType
+ * @memberOf Listener
+ */
+export const flowAfterStateChangeType: "hanko-after-state-change" =
+  "hanko-after-state-change";
+
+/**
+ * The type of the `hanko-before-state-change` event.
+ * @typedef {string} flowBeforeStateChangeType
+ * @memberOf Listener
+ */
+export const flowBeforeStateChangeType: "hanko-before-state-change" =
+  "hanko-before-state-change";
+
+/**
+ * The type of the `hanko-flow-error` event.
+ * @typedef {string} flowErrorType
+ * @memberOf Listener
+ */
+export const flowErrorType: "hanko-flow-error" = "hanko-flow-error";
 
 /**
  * The data passed in the `hanko-session-created` or `hanko-session-resumed` event.
@@ -43,26 +75,20 @@ export const authFlowCompletedType: "hanko-auth-flow-completed" =
  * @interface
  * @category SDK
  * @subcategory Events
- * @property {string=} jwt - The JSON web token associated with the session. Only present when the Hanko-API allows the JWT to be accessible client-side.
- * @property {number} expirationSeconds - The number of seconds until the JWT expires.
- * @property {string} userID - The user associated with the session.
+ * @property {number} expirationSeconds - This property is deprecated. The number of seconds until the JWT expires.
+ * @property {Claims} claims - The JSON web token associated with the session. Only present when the Hanko-API allows the JWT to be accessible client-side.
  */
 export interface SessionDetail {
-  jwt?: string;
-  expirationSeconds: number;
-  userID: string;
+  claims: Claims;
+  expirationSeconds: number; // deprecated
 }
 
-/**
- * The data passed in the `hanko-auth-flow-completed` event.
- *
- * @interface
- * @category SDK
- * @subcategory Events
- * @property {string} userID - The user associated with the removed session.
- */
-export interface AuthFlowCompletedDetail {
-  userID: string;
+export interface FlowErrorDetail {
+  error: Error;
+}
+
+export interface FlowDetail {
+  state: AnyState;
 }
 
 /**

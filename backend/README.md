@@ -17,9 +17,14 @@ easily integrated into any web app with as little as two lines of code.
   - [Cross-domain communication](#cross-domain-communication)
   - [Audit logs](#audit-logs)
   - [Rate Limiting](#rate-limiting)
-  - [Social logins](#social-logins)
+  - [Social connections](#social-connections)
+    - [Built-in providers](#built-in-providers)
+    - [Custom OAuth/OIDC providers](#custom-oauthoidc-providers)
+    - [Account linking](#account-linking)
+  - [User metadata](#user-metadata)
   - [User import](#user-import)
   - [Webhooks](#webhooks)
+  - [Session JWT templates](#session-jwt-templates)
 - [API specification](#api-specification)
 - [Configuration reference](#configuration-reference)
 - [License](#license)
@@ -30,15 +35,13 @@ easily integrated into any web app with as little as two lines of code.
 - Passcodes
 - Passwords
 - Email verification
+- 2FA (TOTP, security keys)
 - JWT management
+- Sessions
 - User management
-- 3rd-party identity providers
-- Webhooks
+- OAuth/OIDC SSO identity providers
 - SAML
-
-### Upcoming features
-
-- 2FA configurations (optional, mandatory)
+- Webhooks
 
 ## Running the backend
 
@@ -171,7 +174,8 @@ a user/password, so a minimal configuration in your configuration file (`backend
 your own `*.yaml` file) could contain the following:
 
 ```yaml
-passcode:
+email_delivery:
+  enabled: true
   email:
     from_address: no-reply@example.com
     from_name: Example Application
@@ -189,13 +193,8 @@ service:
 ```
 
 In a production setting you would rather use a self-hosted SMTP server or a managed service like AWS SES. In that case
-you need to supply the `passcode.smtp.host`, `passcode.smtp.port` as well as the `passcode.smtp.user`,
-`passcode.smtp.password` settings according to your server/service settings.
-
-> **Note** The `passcode.smtp.host` configuration entry is required for the service to start up.
-> Only a check for a non-empty string value will be performed. Also: SMTP-connection related values are not
-> verified, i.e. the application may start but no emails will be sent and your users might not be able to log in if
-> the provided values do not describe an existing SMTP server.
+you need to supply the `email_delivery.smtp.host`, `email_delivery.smtp.port` as well as the `email_delivery.smtp.user`,
+`email_delivery.smtp.password` settings according to your server/service settings.
 
 ### Configure JSON Web Key Set generation
 
@@ -353,16 +352,18 @@ Then run:
 
 > **Note** The `<PATH-TO-CONFIG-FILE>` must be an absolute path to your config file created above.
 
-`8000` is the default port for the public API. It can be [customized](./docs/Config.md) in the configuration through
-the `server.public.address` option.
+`8000` is the default port for the public API. It can
+be [customized](https://github.com/teamhanko/hanko/wiki/hanko-properties-server-properties-public#address) in the
+configuration through the `server.public.address` option.
 
 The service is now available at `localhost:8000`.
 
 #### Start the admin API
 
 In the usage section above we only started the public API. Use the command below to start the admin API. The default
-port is `8001`, but can be [customized](./docs/Config.md) in the configuration through the
-`server.admin.address` option.
+port is `8001`, but can be
+[customized](https://github.com/teamhanko/hanko/wiki/hanko-properties-server-properties-admin) in the configuration
+through the `server.admin.address` option.
 
 ```shell
 serve admin
@@ -434,28 +435,144 @@ It uses a combination of user-id/IP to mitigate DoS attacks on user accounts. Yo
 In production systems, you may want to hide the
 Hanko service behind a proxy or gateway (e.g. Kong, Traefik) to provide additional network-based rate limiting.
 
-### Social Logins
+### Social connections
 
 Hanko supports OAuth-based ([authorization code flow](https://www.rfc-editor.org/rfc/rfc6749#section-1.3.1)) third
-party provider logins. See the `third_party` option in the [configuration reference](./docs/Config.md) on how to
-configure them. All provider configurations require provider credentials. See the guides in the official
-documentation for instructions on how to obtain these:
+party provider logins. The `third_party` configuration
+[option](https://github.com/teamhanko/hanko/wiki/config-properties-third_party) contains all relevant configuration.
+This includes options for setting up redirect URLs (in case of success or error on authentication with a provider) that
+apply to both [built-in](#built-in-providers) and
+[custom](#custom-oauthoidc-providers) providers.
+
+
+#### Built-in providers
+
+Built-in providers can be configured through the `third_party.providers` configuration [option](https://github.com/teamhanko/hanko/wiki/config-properties-third_party).
+They must be explicitly `enabled` (i.e. providers are disabled default).
+All provider configurations require provider credentials in the form of a client ID (`client_id`)
+and a client secret (`secret`). See the guides in the official documentation for instructions on how to obtain these:
 
 - [Apple](https://docs.hanko.io/guides/authentication-methods/oauth/apple)
 - [Discord](https://docs.hanko.io/guides/authentication-methods/oauth/discord)
 - [GitHub](https://docs.hanko.io/guides/authentication-methods/oauth/github)
 - [Google](https://docs.hanko.io/guides/authentication-methods/oauth/google)
+- [LinkedIn](https://docs.hanko.io/guides/authentication-methods/oauth/linkedin)
 - [Microsoft](https://docs.hanko.io/guides/authentication-methods/oauth/microsoft)
+
+#### Custom OAuth/OIDC providers
+
+Custom providers can be configured through the `third_party.custom_providers` configuration
+[option](https://github.com/teamhanko/hanko/wiki/config-properties-third_party-properties-custom_providers).
+Like built-in providers they must be explicitly `enabled` and require a `client_id` and `secret`, which must
+be obtained from the respective provider.
+Custom providers can use either OAuth or OIDC. OIDC providers can be configured to use
+[OIDC Discovery](https://openid.net/specs/openid-connect-discovery-1_0.html) by setting the `use_discovery`
+option to `true`. An `issuer` must be configured too in that case. Otherwise both OAuth and OIDC providers
+can manually define required endpoints (`authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`).
+`scopes` must be explicitly defined (with `openid` being the minimum requirement in case of OIDC providers).
 
 #### Account linking
 
-The `allow_linking` configuration option for providers determines whether automatic account linking for this provider
+The `allow_linking` configuration option for built-in and custom providers determines whether automatic account linking for this provider
 is activated. Note that account linking is based on e-mail addresses and OAuth providers may allow account holders to
 use unverified e-mail addresses or may not provide any information at all about the verification status of e-mail
 addresses. This poses a security risk and potentially allows bad actors to hijack existing Hanko
 accounts associated with the same address. It is therefore recommended to make sure you trust the provider and to
 also enable `emails.require_verification` in your configuration to ensure that only verified third party provider
 addresses may be used.
+
+### User metadata
+
+Hanko allows for defining arbitrary user metadata. Metadata can be categorized into
+three types that differ as to how they can be accessed and modified:
+
+| Metadata type | Public API                   | Admin API             |
+|---------------|------------------------------|-----------------------|
+| Private       | No read or write access      | Read and write access |
+| Public        | Read access                  | Read and write access |
+| Unsafe        | Read access and write access | Read and write access |
+
+Each metadata type supports a maximum of 3,000 characters. Metadata is stored as compact JSON (whitespace is ignored).
+JSON syntax characters (`{`, `:`, `"`, `}`) count toward the character limit.
+Multibyte UTF-8 characters (like emojis or non-Latin characters) count as 1 character each.
+
+#### Private metadata
+
+Private metadata should be used for sensitive data that should not be exposed to the client (e.g., internal flags/ids,
+configuration, or access control details).
+
+Private metadata can be read through the Admin API only using the
+[Get metadata of a user](/api-reference/admin/user-management/get-metadata-of-a-user)
+endpoint.
+
+Private metadata can be set and modified through the Admin API only by using the
+[Patch metadata of a user](https://docs.hanko.io/api-reference/admin/user-management/patch-metadata-of-a-user) endpoint.
+
+#### Public metadata
+
+Public metadata should be used for non-sensitive information that you want accessible but not modifiable by the client
+(e.g., certain user roles, UI preferences, display options).
+
+Public metadata can be read through the Public API, the Admin API and in JWT templates for customizing
+the session JWT:
+
+- `Public API`:
+  - Public metadata is returned in the `user` object in the payload on the `success` state in a
+    [Login](https://docs.hanko.io/api-reference/flow/login) and
+    [Registration](https://docs.hanko.io/api-reference/flow/registration) flow as well
+    as in the payload on the `profile_init` state in a [Profile](https://docs.hanko.io/api-reference/flow/profile) flow.
+  - Public metadata is returned as part of the response of the
+    [Get a user by ID](https://docs.hanko.io/api-reference/public/user-management/get-a-user-by-id) endpoint.
+- `Admin API`:
+  - Public metadata is returned as part of the response of the
+    [Get metadata of a user](https://docs.hanko.io/api-reference/admin/user-metadata-management/get-metadata-of-a-user)
+    endpoint.
+  - Public metadata is returned as part of the response of the
+    [Get a user by ID](https://docs.hanko.io/api-reference/admin/user-management/get-a-user-by-id) endpoint.
+- `JWT Templates`:
+  - Public metadata can be accessed through the `User` context object available on session JWT customization.
+    See [Session JWT templates](#session-jwt-templates) for more details.
+
+Public metadata can be set and modified through the Admin API only by using the
+[Patch metadata of a user](https://docs.hanko.io/api-reference/admin/user-management/patch-metadata-of-a-user) endpoint.
+
+#### Unsafe metadata
+
+Unsafe metadata should be used for non-sensitive, temporary or experimental data that doesn't need strong safety
+guarantees.
+
+Unsafe metadata can be read through the Public API, the Admin API and in JWT templates for customizing
+the session JWT:
+
+- `Public API`:
+    - Unsafe metadata is returned in the `user` object in the payload on the `success` state in a
+      [Login](https://docs.hanko.io/api-reference/flow/login) and
+      [Registration](https://docs.hanko.io/api-reference/flow/registration) flow as well
+      as in the payload on the `profile_init` state in a [Profile](https://docs.hanko.io/api-reference/flow/profile) flow.
+    - Unsafe metadata is returned as part of the response of the
+      [Get a user by ID](https://docs.hanko.io/api-reference/public/user-management/get-a-user-by-id) endpoint.
+- `Admin API`:
+    - Unsafe metadata is returned as part of the response of the
+      [Get metadata of a user](https://docs.hanko.io/api-reference/admin/user-metadata-management/get-metadata-of-a-user)
+      endpoint.
+    - Unsafe metadata is returned as part of the response of the
+      [Get a user by ID](https://docs.hanko.io/api-reference/admin/user-management/get-a-user-by-id) endpoint.
+- `JWT Templates`:
+    - Unsafe metadata can be accessed through the `User` context object available on session JWT customization.
+      See [Session JWT templates](#session-jwt-templates) for more details.
+
+Unsafe metadata can be set and modified through the Public API and the Admin API:
+
+- `Public API`:
+  - Unsafe metadata can be set using the `patch_metadata` action in the
+    [Profile](https://docs.hanko.io/api-reference/flow/profile) flow.
+
+- `Admin API`:
+  - Unsafe metadata can be set using the
+    [Patch metadata of a user](https://docs.hanko.io/api-reference/admin/user-management/patch-metadata-of-a-user)
+    endpoint.
+
+
 
 ### User import
 You can import an existing user pool into Hanko using json in the following format:
@@ -521,16 +638,21 @@ To decode the webhook you can use the JWKs created in [Configure JSON Web Key Se
 
 Hanko sends webhooks for the following event types:
 
-| Event                     | Triggers on                                                                                        |
-|---------------------------|----------------------------------------------------------------------------------------------------|
-| user                      | user creation, user deletion, user update, email creation, email deletion, change of primary email |
-| user.create               | user creation                                                                                      |
-| user.delete               | user deletion                                                                                      |
-| user.update               | user update, email creation, email deletion, change of primary email                               |
-| user.update.email         | email creation, email deletion, change of primary email                                            |
-| user.update.email.create  | email creation                                                                                     |
-| user.update.email.delete  | email deletion                                                                                     |
-| user.update.email.primary | change of primary email                                                                            |
+| Event                       | Triggers on                                                                                        |
+|-----------------------------|----------------------------------------------------------------------------------------------------|
+| user                        | user creation, user deletion, user update, email creation, email deletion, change of primary email |
+| user.create                 | user creation                                                                                      |
+| user.delete                 | user deletion                                                                                      |
+| user.login                  | user login                                                                                         |
+| user.update                 | user update, email creation, email deletion, change of primary email                               |
+| user.update.email           | email creation, email deletion, change of primary email                                            |
+| user.update.email.create    | email creation                                                                                     |
+| user.update.email.delete    | email deletion                                                                                     |
+| user.update.email.primary   | change of primary email                                                                            |
+| user.update.username.create | username creation                                                                                  |
+| user.update.username.delete | username deletion                                                                                  |
+| user.update.username.update | change of username                                                                                 |
+| email.send                  | an email was sent or should be sent                                                                |
 
 As you can see, events can have subevents. You are able to filter which events you want to receive by either selecting
 a parent event when you want to receive all subevents or selecting specific subevents.
@@ -548,6 +670,111 @@ webhooks:
         - user
 ```
 
+### Session JWT templates
+
+You can define custom claims that will be added to session JWTs through the `session.jwt_template.claims`
+configuration option.
+
+These claims are processed at JWT generation time and can include static values,
+templated strings using Go's text/template syntax, or nested structures (maps and slices).
+
+The template has access to user data via the `.User` field, which includes:
+- `.User.UserID`: The user's unique ID (string)
+- `.User.Email`: Email details (optional)
+  - `User.Email.Address`: The actual email address
+  - `User.Email.IsPrimary`: Whether this email address is the primary email address of this user
+  - `User.Email.IsVerified`: Whether this email address has been verified by the user
+- `.User.FamilyName`: The user's family name (string, optional)
+- `.User.GivenName`: The user's given name (string, optional)
+- `.User.Name`: The user's full name (string, optional)
+- `.User.Picture`: The user's profile picture URL (string, optional)
+- `.User.Username`: The user's username (string, optional)
+- `.User.Metadata`: The user's public and unsafe metadata (optional)
+    - `.User.Metadata.Public`: The user's public metadata (object)
+    - `.User.Metadata.Unsafe`: The user's unsafe metadata (object)
+
+#### Accessing user metadata
+
+`.User.Metadata.Public` and `.User.Metadata.Unsafe`  can be accessed and queried using
+[GJSON Path Syntax](https://github.com/tidwall/gjson/blob/master/SYNTAX.md) (try it out in the
+[playground](https://gjson.dev/)).
+
+Assume that a user's public metadata consisted of the following data:
+
+```json
+{
+    "display_name": "GamerDude",
+    "favorite_games": [
+        {
+            "name": "Legends of Valor",
+            "genre": "RPG",
+            "playtime_hours": 142.3
+        },
+        {
+            "name": "Space Raiders",
+            "genre": "Sci-Fi Shooter",
+            "playtime_hours": 87.6
+        }
+    ]
+}
+```
+
+Then you could, for example, access this data in the following ways in your templates:
+
+```yaml
+display_name: '{{ .User.Metadata.Public "display_name" }}'
+favorite_games: '{{ .User.Metadata.Public "favorite_games" }}'
+favorite_games_with_playtime_over_100: '{{ .User.Metadata.Public "favorite_games.#(playtime_hours>100)" }}'
+favorite_genres: '{{ .User.Metadata.Public "favorite_games.#.genre" }}'
+```
+
+> **Note**
+>
+> Ensure you use proper quoting when accessing metadata. `.User.Metadata.Public` and `.User.Metadata.Unsafe`
+are function calls internally and the given path argument must be a string, so it must be double quoted.
+If you use use double quotes for your entire claim template then the path argument must be escaped, i.e.:
+`"{{ .User.Metadata.Public \"display_name\" }}"`
+
+
+Example usage in YAML configuration:
+```yaml
+role: "user"                                           # Static value
+user_email: "{{.User.Email.Address}}"                  # Templated string
+is_verified: "{{.User.Email.IsVerified}}"              # Boolean from user data
+metadata:                                              # Nested map
+  greeting: "Hello {{.User.Username}}"
+  source: '{{ .User.Metadata.Public "display_name" }}' # Data read from public metadata
+  ui_theme: '{{ .User.Metadata.Unsafe "ui_theme" }}'   # Data read from unsafe metadata
+scopes:                                                # Slice with templated value
+    - "read"
+    - "write"
+    - "{{if .User.Email.IsVerified}}admin{{else}}basic{{end}}"
+```
+
+In this example:
+- `role` is a static string ("user").
+- `user_email` dynamically inserts the user's email address.
+- `is_verified` inserts a boolean indicating email verification status.
+- `metadata` is a nested map with a static `source` and a templated `greeting`.
+- `scopes` is a slice combining static values and a conditional template.
+
+Notes:
+- Custom claims are added at the top level of the session token [payload](#jwt-payload).
+- Claims with the following keys will be ignored because they are currently added to the JWT by default:
+    - `sub`
+    - `iat`
+    - `exp`
+    - `aud`
+    - `iss`
+    - `email`
+    - `username`
+    - `session_id`
+- Templates must conform to valid [Go text/template syntax](https://pkg.go.dev/text/template). Invalid templates are
+  logged and excluded from the generated token.
+- Boolean strings ("true" or "false") from templates are automatically converted to actual booleans.
+
+For more details on template syntax, see: https://pkg.go.dev/text/template
+
 ## API specification
 
 - [Hanko Public API](https://docs.hanko.io/api-reference/public/introduction)
@@ -555,7 +782,10 @@ webhooks:
 
 ## Configuration reference
 
-[Configuration reference](./docs/Config.md)
+- [Using configuration file](https://github.com/teamhanko/hanko/wiki/Using-configuration-file)
+- [Using environment variables](https://github.com/teamhanko/hanko/wiki/Using-environment-variables)
+- [Configuration reference](https://github.com/teamhanko/hanko/wiki/config)
+
 
 ## License
 

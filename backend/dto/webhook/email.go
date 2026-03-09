@@ -1,40 +1,29 @@
 package webhook
 
-import "github.com/teamhanko/hanko/backend/persistence/models"
-
 type EmailSend struct {
-	Subject          string    `json:"subject"`        // subject
-	BodyPlain        string    `json:"body_plain"`     // used for string templates
-	Body             string    `json:"body,omitempty"` // used for html templates
-	ToEmailAddress   string    `json:"to_email_address"`
-	DeliveredByHanko bool      `json:"delivered_by_hanko"`
-	AcceptLanguage   string    `json:"accept_language"` // accept_language header from http request
-	Type             EmailType `json:"type"`            // type of the email, currently only "passcode", but other could be added later
+	Subject          string `json:"subject"`        // subject
+	BodyPlain        string `json:"body_plain"`     // used for string templates
+	Body             string `json:"body,omitempty"` // used for HTML templates
+	ToEmailAddress   string `json:"to_email_address"`
+	DeliveredByHanko bool   `json:"delivered_by_hanko"`
+	AcceptLanguage   string `json:"accept_language"` // Deprecated. Accept-Language header from HTTP request
+	Language         string `json:"language"`        // X-Language header from HTTP request
+	Type             string `json:"type"`            // type of the email
 
 	Data interface{} `json:"data"`
 }
 
 type PasscodeData struct {
-	ServiceName string `json:"service_name"`
-	OtpCode     string `json:"otp_code"`
-	TTL         int    `json:"ttl"`
-	ValidUntil  int64  `json:"valid_until"` // UnixTimestamp
+	ServiceName string `json:"service_name,omitempty"`
+	OtpCode     string `json:"otp_code,omitempty"`
+	TTL         int    `json:"ttl,omitempty"`
+	ValidUntil  int64  `json:"valid_until,omitempty"` // UnixTimestamp
 }
 
-type PasslinkData struct {
-	ServiceName  string                    `json:"service_name"`
-	Token        string                    `json:"token"`
-	URL          string                    `json:"url"`
-	TTL          int                       `json:"ttl"`
-	ValidUntil   int64                     `json:"valid_until"` // UnixTimestamp
-	RedirectPath string                    `json:"redirect_path"`
-	RetryLimit   int                       `json:"retry_limit"`
-	Strictness   models.PasslinkStrictness `json:"strictness"`
+type SecurityNotificationData struct {
+	Template            string `json:"template"`
+	ServiceName         string `json:"service_name,omitempty"`
+	NewEmailAddress     string `json:"new_email_address,omitempty"`
+	OldEmailAddress     string `json:"old_email_address,omitempty"`
+	DeletedEmailAddress string `json:"deleted_email_address,omitempty"`
 }
-
-type EmailType string
-
-var (
-	EmailTypePasscode EmailType = "passcode"
-	EmailTypePasslink EmailType = "passlink"
-)

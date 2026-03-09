@@ -1,10 +1,12 @@
 package dto
 
 import (
-	"github.com/fatih/structs"
-	"github.com/teamhanko/hanko/backend/config"
-	"github.com/teamhanko/hanko/backend/persistence/models"
 	"strings"
+
+	"github.com/fatih/structs"
+	"github.com/gofrs/uuid"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	"github.com/teamhanko/hanko/backend/v2/persistence/models"
 )
 
 type ThirdPartyAuthCallback struct {
@@ -24,39 +26,52 @@ type ThirdPartyAuthRequest struct {
 }
 
 type Identity struct {
-	ID       string `json:"id"`
-	Provider string `json:"provider"`
+	ID         string    `json:"id"` // the user/subject ID at the provider, ProviderUserID from models.Identity
+	Provider   string    `json:"provider"`
+	IdentityID uuid.UUID `json:"identity_id"` // the internal id from models.Identity
 }
 
 type Identities []Identity
 
-func FromIdentitiesModel(identities models.Identities) Identities {
+func FromIdentitiesModel(identities models.Identities, cfg *config.Config) Identities {
 	var result Identities
 	for _, i := range identities {
-		identity := FromIdentityModel(&i)
+		identity := FromIdentityModel(&i, cfg)
 		result = append(result, *identity)
 	}
 	return result
 }
 
-func FromIdentityModel(identity *models.Identity) *Identity {
+func FromIdentityModel(identity *models.Identity, cfg *config.Config) *Identity {
 	if identity == nil {
 		return nil
 	}
 
 	return &Identity{
-		ID:       identity.ProviderID,
-		Provider: getProviderDisplayName(identity),
+		ID:         identity.ProviderUserID,
+		Provider:   getProviderDisplayName(identity, cfg),
+		IdentityID: identity.ID,
 	}
 }
 
-func getProviderDisplayName(identity *models.Identity) string {
-	s := structs.New(config.ThirdPartyProviders{})
-	for _, field := range s.Fields() {
-		if strings.ToLower(field.Name()) == strings.ToLower(identity.ProviderName) {
-			return field.Name()
+func getProviderDisplayName(identity *models.Identity, cfg *config.Config) string {
+	if identity.SamlIdentity != nil {
+		for _, ip := range cfg.Saml.IdentityProviders {
+			if ip.Enabled && ip.Domain == identity.SamlIdentity.Domain {
+				return ip.Name
+			}
+		}
+	} else if strings.HasPrefix(identity.ProviderID, "custom_") {
+		providerNameWithoutPrefix := strings.TrimPrefix(identity.ProviderID, "custom_")
+		return cfg.ThirdParty.CustomProviders[providerNameWithoutPrefix].DisplayName
+	} else {
+		s := structs.New(config.ThirdPartyProviders{})
+		for _, field := range s.Fields() {
+			if strings.ToLower(field.Name()) == strings.ToLower(identity.ProviderID) {
+				return field.Name()
+			}
 		}
 	}
 
-	return strings.TrimSpace(identity.ProviderName)
+	return strings.TrimSpace(identity.ProviderID)
 }

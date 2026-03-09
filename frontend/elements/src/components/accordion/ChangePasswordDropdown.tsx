@@ -1,8 +1,6 @@
-import { StateUpdater, useContext, useState } from "preact/compat";
+import { h } from "preact";
+import { Dispatch, SetStateAction, useContext, useState } from "preact/compat";
 
-import { HankoError } from "@teamhanko/hanko-frontend-sdk";
-
-import { AppContext } from "../../contexts/AppProvider";
 import { TranslateContext } from "@denysvuika/preact-translate";
 
 import Form from "../form/Form";
@@ -10,45 +8,29 @@ import Input from "../form/Input";
 import Button from "../form/Button";
 import Paragraph from "../paragraph/Paragraph";
 import Dropdown from "./Dropdown";
+import Link from "../link/Link";
+import ErrorMessage from "../error/ErrorMessage";
+import { State } from "@teamhanko/hanko-frontend-sdk";
 
 interface Props {
-  setError: (e: HankoError) => void;
-  checkedItemIndex?: number;
-  setCheckedItemIndex: StateUpdater<number>;
+  checkedItemID?: string;
+  setCheckedItemID: Dispatch<SetStateAction<string>>;
+  flowState: State<"profile_init">;
+  onState(state: State<any>): Promise<void>;
 }
 
 const ChangePasswordDropdown = ({
-  setError,
-  checkedItemIndex,
-  setCheckedItemIndex,
+  checkedItemID,
+  setCheckedItemID,
+  onState,
+  flowState,
 }: Props) => {
   const { t } = useContext(TranslateContext);
-  const { hanko, config, user } = useContext(AppContext);
-
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isSuccess, setIsSuccess] = useState<boolean>(false);
   const [newPassword, setNewPassword] = useState<string>("");
 
-  const changePassword = (event: Event) => {
-    event.preventDefault();
-    setIsLoading(true);
-    hanko.password
-      .update(user.id, newPassword)
-      .then(() => {
-        setNewPassword("");
-        setError(null);
-        setIsSuccess(true);
-        setTimeout(() => {
-          setCheckedItemIndex(null);
-          setTimeout(() => {
-            setIsSuccess(false);
-          }, 500);
-        }, 1000);
-        return;
-      })
-      .finally(() => setIsLoading(false))
-      .catch(setError);
-  };
+  const action = flowState.actions.password_create.enabled
+    ? flowState.actions.password_create
+    : flowState.actions.password_update;
 
   const onInputHandler = (event: Event) => {
     event.preventDefault();
@@ -57,38 +39,70 @@ const ChangePasswordDropdown = ({
     }
   };
 
+  const onPasswordSubmit = async (event: Event, password: string) => {
+    event.preventDefault();
+    const nextState = await action.run(
+      { password },
+      { dispatchAfterStateChangeEvent: false },
+    );
+    return onState(nextState);
+  };
+
+  const onPasswordDelete = async (event: Event) => {
+    event.preventDefault();
+    const nextState = await flowState.actions.password_delete.run(null, {
+      dispatchAfterStateChangeEvent: false,
+    });
+    return onState(nextState);
+  };
+
   return (
     <Dropdown
-      name={"change-password-dropdown"}
-      title={t("labels.changePassword")}
-      checkedItemIndex={checkedItemIndex}
-      setCheckedItemIndex={setCheckedItemIndex}
+      name={"password-edit-dropdown"}
+      title={t(
+        flowState.actions.password_create.enabled
+          ? "labels.setPassword"
+          : "labels.changePassword",
+      )}
+      checkedItemID={checkedItemID}
+      setCheckedItemID={setCheckedItemID}
     >
       <Paragraph>
         {t("texts.passwordFormatHint", {
-          minLength: config.password.min_password_length,
-          maxLength: 72,
+          minLength: action.inputs.password.min_length?.toString(10),
+          maxLength: action.inputs.password.max_length?.toString(10),
         })}
       </Paragraph>
-      <Form onSubmit={changePassword}>
+      <ErrorMessage
+        flowError={flowState.actions.password_create.inputs.password?.error}
+      />
+      <Form
+        flowAction={action}
+        onSubmit={(event: Event) =>
+          onPasswordSubmit(event, newPassword).then(() => setNewPassword(""))
+        }
+      >
         <Input
+          markError
+          autoComplete={"new-password"}
           placeholder={t("labels.newPassword")}
           type={"password"}
           onInput={onInputHandler}
           value={newPassword}
-          minLength={config.password.min_password_length}
-          maxLength={72}
-          required
-          disabled={isLoading || isSuccess}
+          flowInput={action.inputs.password}
         />
-        <Button
-          isLoading={isLoading}
-          isSuccess={isSuccess}
-          disabled={isLoading}
-        >
-          {t("labels.save")}
-        </Button>
+        <Button>{t("labels.save")}</Button>
       </Form>
+      <Link
+        dangerous
+        flowAction={flowState.actions.password_delete}
+        onClick={(event: Event) =>
+          onPasswordDelete(event).then(() => setNewPassword(""))
+        }
+        loadingSpinnerPosition={"right"}
+      >
+        {t("labels.delete")}
+      </Link>
     </Dropdown>
   );
 };

@@ -1,5 +1,5 @@
 # Build the hanko binary
-FROM --platform=$BUILDPLATFORM golang:1.20 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.24 AS builder
 
 ARG TARGETARCH
 
@@ -30,6 +30,8 @@ COPY template template/
 COPY utils utils/
 COPY mapper mapper/
 COPY webhooks webhooks/
+COPY flow_api flow_api/
+COPY flowpilot flowpilot/
 
 # Build
 RUN go generate ./...

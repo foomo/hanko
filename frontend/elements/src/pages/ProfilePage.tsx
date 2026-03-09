@@ -1,184 +1,296 @@
-import { Fragment } from "preact";
-import { useContext, useEffect, useState } from "preact/compat";
-
-import { HankoError } from "@teamhanko/hanko-frontend-sdk";
-
-import { AppContext } from "../contexts/AppProvider";
+import { useContext, useState } from "preact/compat";
 import { TranslateContext } from "@denysvuika/preact-translate";
+import { State } from "@teamhanko/hanko-frontend-sdk";
+
+import { useFlowState } from "../hooks/UseFlowState";
+import { AppContext } from "../contexts/AppProvider";
 
 import Content from "../components/wrapper/Content";
 import Headline1 from "../components/headline/Headline1";
 import Paragraph from "../components/paragraph/Paragraph";
-import ErrorMessage from "../components/error/ErrorMessage";
 import ListEmailsAccordion from "../components/accordion/ListEmailsAccordion";
-import ListPasskeysAccordion from "../components/accordion/ListPasskeysAccordion";
+import ListWebauthnCredentialsAccordion from "../components/accordion/ListWebauthnCredentialsAccordion";
 import AddEmailDropdown from "../components/accordion/AddEmailDropdown";
 import ChangePasswordDropdown from "../components/accordion/ChangePasswordDropdown";
-import AddPasskeyDropdown from "../components/accordion/AddPasskeyDropdown";
+import AddWebauthnCredentialDropdown from "../components/accordion/AddWebauthnCredentialDropdown";
 import Divider from "../components/spacer/Divider";
 import Button from "../components/form/Button";
 import Form from "../components/form/Form";
-import DeleteAccountPage from "./DeleteAccountPage";
 import Spacer from "../components/spacer/Spacer";
+import ChangeUsernameDropdown from "../components/accordion/ChangeUsernameDropdown";
+import DeleteAccountPage from "./DeleteAccountPage";
+import ErrorBox from "../components/error/ErrorBox";
+import ListSessionsAccordion from "../components/accordion/ListSessionsAccordion";
+import ManageAuthAppDropdown from "../components/accordion/ManageAuthAppDropdown";
+import ListIdentities from "../components/accordion/ListIdentities";
+import ConnectIdentityDropdown from "../components/accordion/ConnectIdentityDropdown";
 
-const ProfilePage = () => {
+interface Props {
+  state: State<"profile_init">;
+  enablePasskeys?: boolean;
+}
+
+const ProfilePage = (props: Props) => {
   const { t } = useContext(TranslateContext);
-  const { config, webauthnCredentials, emails, setPage, enablePasskeys } =
-    useContext(AppContext);
+  const { setPage } = useContext(AppContext);
+  const { flowState } = useFlowState(props.state);
 
-  const [emailError, setEmailError] = useState<HankoError>(null);
-  const [passwordError, setPasswordError] = useState<HankoError>(null);
-  const [passkeyError, setPasskeyError] = useState<HankoError>(null);
+  const [checkedItemID, setCheckedItemID] = useState<string>("");
 
-  const [checkedItemIndexEmails, setCheckedItemIndexEmails] =
-    useState<number>(null);
-  const [checkedItemIndexAddEmail, setCheckedItemIndexAddEmail] =
-    useState<number>(null);
-  const [checkedItemIndexSetPassword, setCheckedItemIndexSetPassword] =
-    useState<number>(null);
-  const [checkedItemIndexPasskeys, setCheckedItemIndexPasskeys] =
-    useState<number>(null);
-  const [checkedItemIndexAddPasskey, setCheckedItemIndexAddPasskey] =
-    useState<number>(null);
-
-  const deleteUser = (event: Event) => {
-    event.preventDefault();
-    setPage(<DeleteAccountPage onBack={() => setPage(<ProfilePage />)} />);
+  const animationFinished = () => {
+    return new Promise((resolve) => setTimeout(resolve, 360));
   };
 
-  useEffect(() => {
-    if (checkedItemIndexEmails !== null) {
-      setCheckedItemIndexAddEmail(null);
-      setCheckedItemIndexSetPassword(null);
-      setCheckedItemIndexPasskeys(null);
-      setCheckedItemIndexAddPasskey(null);
+  const onState = async (newState: State<any>) => {
+    if (!newState?.error) {
+      setCheckedItemID(null);
+      await animationFinished();
     }
-  }, [checkedItemIndexEmails]);
 
-  useEffect(() => {
-    if (checkedItemIndexAddEmail !== null) {
-      setCheckedItemIndexEmails(null);
-      setCheckedItemIndexSetPassword(null);
-      setCheckedItemIndexPasskeys(null);
-      setCheckedItemIndexAddPasskey(null);
-    }
-  }, [checkedItemIndexAddEmail]);
+    newState.dispatchAfterStateChangeEvent();
+  };
 
-  useEffect(() => {
-    if (checkedItemIndexSetPassword !== null) {
-      setCheckedItemIndexAddEmail(null);
-      setCheckedItemIndexEmails(null);
-      setCheckedItemIndexPasskeys(null);
-      setCheckedItemIndexAddPasskey(null);
-    }
-  }, [checkedItemIndexSetPassword]);
+  const onPasskeyDelete = async (event: Event, id: string) => {
+    event.preventDefault();
+    const nextState = await flowState.actions.webauthn_credential_delete.run(
+      {
+        passkey_id: id,
+      },
+      { dispatchAfterStateChangeEvent: false },
+    );
+    return onState(nextState);
+  };
 
-  useEffect(() => {
-    if (checkedItemIndexPasskeys !== null) {
-      setCheckedItemIndexAddEmail(null);
-      setCheckedItemIndexEmails(null);
-      setCheckedItemIndexSetPassword(null);
-      setCheckedItemIndexAddPasskey(null);
-    }
-  }, [checkedItemIndexPasskeys]);
+  const onWebauthnCredentialNameSubmit = async (
+    event: Event,
+    id: string,
+    name: string,
+  ) => {
+    event.preventDefault();
+    const nextState = await flowState.actions.webauthn_credential_rename.run(
+      {
+        passkey_id: id,
+        passkey_name: name,
+      },
+      { dispatchAfterStateChangeEvent: false },
+    );
+    return onState(nextState);
+  };
 
-  useEffect(() => {
-    if (checkedItemIndexAddPasskey !== null) {
-      setCheckedItemIndexAddEmail(null);
-      setCheckedItemIndexEmails(null);
-      setCheckedItemIndexSetPassword(null);
-      setCheckedItemIndexPasskeys(null);
-    }
-  }, [checkedItemIndexAddPasskey]);
+  const onSecurityKeyDelete = async (event: Event, id: string) => {
+    event.preventDefault();
+    const nextState = await flowState.actions.security_key_delete.run(
+      {
+        security_key_id: id,
+      },
+      { dispatchAfterStateChangeEvent: false },
+    );
+    return onState(nextState);
+  };
 
-  useEffect(() => {
-    if (emailError !== null) {
-      setPasswordError(null);
-      setPasskeyError(null);
-    }
-  }, [emailError]);
+  const onBack = (event: Event) => {
+    event.preventDefault();
+    setPage(
+      <ProfilePage state={flowState} enablePasskeys={props.enablePasskeys} />,
+    );
+    return Promise.resolve();
+  };
 
-  useEffect(() => {
-    if (passwordError !== null) {
-      setEmailError(null);
-      setPasskeyError(null);
-    }
-  }, [passwordError]);
-
-  useEffect(() => {
-    if (passkeyError !== null) {
-      setEmailError(null);
-      setPasswordError(null);
-    }
-  }, [passkeyError]);
+  const onUserDelete = (event: Event) => {
+    event.preventDefault();
+    setPage(<DeleteAccountPage onBack={onBack} state={flowState} />);
+    return Promise.resolve();
+  };
 
   return (
     <Content>
-      <Headline1>{t("headlines.profileEmails")}</Headline1>
-      <ErrorMessage error={emailError} />
-      <Paragraph>{t("texts.manageEmails")}</Paragraph>
-      <Paragraph>
-        <ListEmailsAccordion
-          setError={setEmailError}
-          checkedItemIndex={checkedItemIndexEmails}
-          setCheckedItemIndex={setCheckedItemIndexEmails}
-        />
-        {emails.length < config.emails.max_num_of_addresses ? (
-          <AddEmailDropdown
-            setError={setEmailError}
-            checkedItemIndex={checkedItemIndexAddEmail}
-            setCheckedItemIndex={setCheckedItemIndexAddEmail}
-          />
-        ) : null}
-      </Paragraph>
-      {config.password.enabled ? (
-        <Fragment>
-          <Headline1>{t("headlines.profilePassword")}</Headline1>
-          <ErrorMessage error={passwordError} />
-          <Paragraph>{t("texts.changePassword")}</Paragraph>
+      <ErrorBox
+        state={
+          flowState?.error?.code !== "form_data_invalid_error"
+            ? flowState
+            : null
+        }
+      />
+      {flowState.actions.username_create.enabled ||
+      flowState.actions.username_update.enabled ||
+      flowState.actions.username_delete.enabled ? (
+        <>
+          <Headline1>{t("labels.username")}</Headline1>
+          {flowState.payload.user.username ? (
+            <Paragraph>
+              <b>{flowState.payload.user.username.username}</b>
+            </Paragraph>
+          ) : null}
           <Paragraph>
-            <ChangePasswordDropdown
-              setError={setPasswordError}
-              checkedItemIndex={checkedItemIndexSetPassword}
-              setCheckedItemIndex={setCheckedItemIndexSetPassword}
-            />
-          </Paragraph>
-        </Fragment>
-      ) : null}
-      {webauthnCredentials.length > 0 || enablePasskeys ? (
-        <Fragment>
-          <Headline1>{t("headlines.profilePasskeys")}</Headline1>
-          <ErrorMessage error={passkeyError} />
-          <Paragraph>{t("texts.managePasskeys")}</Paragraph>
-          <Paragraph>
-            <ListPasskeysAccordion
-              credentials={webauthnCredentials}
-              setError={setPasskeyError}
-              checkedItemIndex={checkedItemIndexPasskeys}
-              setCheckedItemIndex={setCheckedItemIndexPasskeys}
-            />
-            {enablePasskeys ? (
-              <AddPasskeyDropdown
-                setError={setPasskeyError}
-                checkedItemIndex={checkedItemIndexAddPasskey}
-                setCheckedItemIndex={setCheckedItemIndexAddPasskey}
+            {flowState.actions.username_create.enabled ||
+            flowState.actions.username_update.enabled ? (
+              <ChangeUsernameDropdown
+                onState={onState}
+                flowState={flowState}
+                checkedItemID={checkedItemID}
+                setCheckedItemID={setCheckedItemID}
               />
             ) : null}
           </Paragraph>
-        </Fragment>
+        </>
       ) : null}
-      {config.account.allow_deletion ? (
-        <Fragment>
+      {flowState.payload?.user?.emails ||
+      flowState.actions.email_create.enabled ? (
+        <>
+          <Headline1>{t("headlines.profileEmails")}</Headline1>
+          <Paragraph>
+            <ListEmailsAccordion
+              flowState={flowState}
+              onState={onState}
+              checkedItemID={checkedItemID}
+              setCheckedItemID={setCheckedItemID}
+            />
+            {flowState.actions.email_create.enabled ? (
+              <AddEmailDropdown
+                flowState={flowState}
+                onState={onState}
+                checkedItemID={checkedItemID}
+                setCheckedItemID={setCheckedItemID}
+              />
+            ) : null}
+          </Paragraph>
+        </>
+      ) : null}
+      {flowState.actions.password_create.enabled ||
+      flowState.actions.password_update.enabled ? (
+        <>
+          <Headline1>{t("headlines.profilePassword")}</Headline1>
+          <Paragraph>
+            <ChangePasswordDropdown
+              flowState={flowState}
+              onState={onState}
+              checkedItemID={checkedItemID}
+              setCheckedItemID={setCheckedItemID}
+            />
+          </Paragraph>
+        </>
+      ) : null}
+      {props.enablePasskeys &&
+      (flowState.payload?.user?.passkeys ||
+        flowState.actions.webauthn_credential_create.enabled) ? (
+        <>
+          <Headline1>{t("headlines.profilePasskeys")}</Headline1>
+          <Paragraph>
+            <ListWebauthnCredentialsAccordion
+              flowState={flowState}
+              onBack={onBack}
+              onCredentialNameSubmit={onWebauthnCredentialNameSubmit}
+              onCredentialDelete={onPasskeyDelete}
+              credentials={flowState.payload.user.passkeys}
+              checkedItemID={checkedItemID}
+              setCheckedItemID={setCheckedItemID}
+              allowCredentialDeletion={
+                !!flowState.actions.webauthn_credential_delete.enabled
+              }
+              credentialType={"passkey"}
+            />
+            {flowState.actions.webauthn_credential_create.enabled ? (
+              <AddWebauthnCredentialDropdown
+                flowState={flowState}
+                onState={onState}
+                credentialType={"passkey"}
+                checkedItemID={checkedItemID}
+                setCheckedItemID={setCheckedItemID}
+              />
+            ) : null}
+          </Paragraph>
+        </>
+      ) : null}
+      {flowState.payload.user.mfa_config?.security_keys_enabled ? (
+        <>
+          <Headline1>{t("headlines.securityKeys")}</Headline1>
+          <Paragraph>
+            <ListWebauthnCredentialsAccordion
+              onBack={onBack}
+              flowState={flowState}
+              onCredentialNameSubmit={onWebauthnCredentialNameSubmit}
+              onCredentialDelete={onSecurityKeyDelete}
+              credentials={flowState.payload.user.security_keys}
+              checkedItemID={checkedItemID}
+              setCheckedItemID={setCheckedItemID}
+              allowCredentialDeletion={
+                !!flowState.actions.security_key_delete.enabled
+              }
+              credentialType={"security-key"}
+            />
+            {flowState.actions.security_key_create.enabled ? (
+              <AddWebauthnCredentialDropdown
+                flowState={flowState}
+                onState={onState}
+                credentialType={"security-key"}
+                checkedItemID={checkedItemID}
+                setCheckedItemID={setCheckedItemID}
+              />
+            ) : null}
+          </Paragraph>
+        </>
+      ) : null}
+      {flowState.payload.user.mfa_config?.totp_enabled ? (
+        <>
+          <Headline1>{t("headlines.authenticatorApp")}</Headline1>
+          <Paragraph>
+            <ManageAuthAppDropdown
+              onState={onState}
+              flowState={flowState}
+              checkedItemID={checkedItemID}
+              setCheckedItemID={setCheckedItemID}
+            />
+          </Paragraph>
+        </>
+      ) : null}
+      {flowState.actions.connect_thirdparty_oauth_provider.enabled ||
+      flowState.actions.disconnect_thirdparty_oauth_provider.enabled ? (
+        <>
+          <Headline1>{t("headlines.connectedAccounts")}</Headline1>
+          <ListIdentities
+            flowState={flowState}
+            onState={onState}
+            checkedItemID={checkedItemID}
+            setCheckedItemID={setCheckedItemID}
+          />
+          {flowState.actions.connect_thirdparty_oauth_provider.enabled ? (
+            <ConnectIdentityDropdown
+              setCheckedItemID={setCheckedItemID}
+              flowState={flowState}
+              onState={onState}
+              checkedItemID={checkedItemID}
+            />
+          ) : null}
+        </>
+      ) : null}
+      {flowState.payload.sessions ? (
+        <>
+          <Headline1>{t("headlines.profileSessions")}</Headline1>
+          <Paragraph>
+            <ListSessionsAccordion
+              flowState={flowState}
+              onState={onState}
+              checkedItemID={checkedItemID}
+              setCheckedItemID={setCheckedItemID}
+            />
+          </Paragraph>
+        </>
+      ) : null}
+      {flowState.actions.account_delete.enabled ? (
+        <>
           <Spacer />
           <Paragraph>
             <Divider />
           </Paragraph>
           <Paragraph>
-            <Form onSubmit={deleteUser}>
+            <Form
+              onSubmit={onUserDelete}
+              flowAction={flowState.actions.account_delete}
+            >
               <Button dangerous>{t("headlines.deleteAccount")}</Button>
             </Form>
           </Paragraph>
-        </Fragment>
+        </>
       ) : null}
     </Content>
   );

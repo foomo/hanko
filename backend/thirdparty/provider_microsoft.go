@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/mail"
+	"regexp"
+
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jws"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/mitchellh/mapstructure"
-	"github.com/teamhanko/hanko/backend/config"
+	"github.com/teamhanko/hanko/backend/v2/config"
 	"golang.org/x/oauth2"
-	"net/mail"
-	"regexp"
 )
 
 const (
@@ -28,7 +29,8 @@ var DefaultScopes = []string{
 }
 
 type microsoftProvider struct {
-	*oauth2.Config
+	config      config.ThirdPartyProvider
+	oauthConfig *oauth2.Config
 }
 
 type MicrosoftUser struct {
@@ -46,7 +48,8 @@ func NewMicrosoftProvider(config config.ThirdPartyProvider, redirectURL string) 
 	}
 
 	return &microsoftProvider{
-		Config: &oauth2.Config{
+		config: config,
+		oauthConfig: &oauth2.Config{
 			ClientID:     config.ClientID,
 			ClientSecret: config.Secret,
 			Endpoint: oauth2.Endpoint{
@@ -59,8 +62,17 @@ func NewMicrosoftProvider(config config.ThirdPartyProvider, redirectURL string) 
 	}, nil
 }
 
-func (p microsoftProvider) GetOAuthToken(code string) (*oauth2.Token, error) {
-	return p.Exchange(context.Background(), code)
+func (p microsoftProvider) AuthCodeURL(state string, opts ...oauth2.AuthCodeOption) string {
+
+	if prompt := p.config.Prompt; prompt != "" {
+		opts = append(opts, oauth2.SetAuthURLParam("prompt", prompt))
+	}
+
+	return p.oauthConfig.AuthCodeURL(state, opts...)
+}
+
+func (p microsoftProvider) GetOAuthToken(code string, opts ...oauth2.AuthCodeOption) (*oauth2.Token, error) {
+	return p.oauthConfig.Exchange(context.Background(), code, opts...)
 }
 
 func (p microsoftProvider) GetUserData(token *oauth2.Token) (*UserData, error) {
@@ -80,7 +92,7 @@ func (p microsoftProvider) GetUserData(token *oauth2.Token) (*UserData, error) {
 		// field to be present per default, hence usage of the extra option jws.WithInferAlgorithmFromKey.
 		// See the jwt.WithKeySet documentation.
 		jwt.WithKeySet(jwks, jws.WithInferAlgorithmFromKey(true)),
-		jwt.WithAudience(p.Config.ClientID),
+		jwt.WithAudience(p.oauthConfig.ClientID),
 		jwt.WithValidator(p.issuerValidator()),
 	)
 
@@ -148,13 +160,15 @@ func (p microsoftProvider) GetUserData(token *oauth2.Token) (*UserData, error) {
 		PreferredUsername: idTokenClaims.PreferredUsername,
 		Email:             email.Email,
 		EmailVerified:     email.Verified,
+		GivenName:         idTokenClaims.GivenName,
+		FamilyName:        idTokenClaims.FamilyName,
 	}
 
 	return data, nil
 }
 
-func (p microsoftProvider) Name() string {
-	return "microsoft"
+func (p microsoftProvider) ID() string {
+	return p.config.ID
 }
 
 func (p microsoftProvider) issuerValidator() jwt.ValidatorFunc {
@@ -174,6 +188,8 @@ type microsoftIdTokenClaims struct {
 	PreferredUsername                  string `mapstructure:"preferred_username"`
 	UserPrincipalName                  string `mapstructure:"upn"`
 	XMicrosoftEmailDomainOwnerVerified any    `mapstructure:"xms_edov"`
+	FamilyName                         string `mapstructure:"family_name"`
+	GivenName                          string `mapstructure:"given_name"`
 }
 
 // IsEmailVerified checks if the email used is verified. Functionality mainly derived from Supabase's GoTrue fork

@@ -4,23 +4,24 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/gobuffalo/pop/v6"
 	"github.com/gofrs/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/lestrrat-go/jwx/v2/jwt"
-	"github.com/teamhanko/hanko/backend/audit_log"
-	"github.com/teamhanko/hanko/backend/config"
-	"github.com/teamhanko/hanko/backend/dto"
-	"github.com/teamhanko/hanko/backend/dto/intern"
-	"github.com/teamhanko/hanko/backend/mapper"
-	"github.com/teamhanko/hanko/backend/persistence"
-	"github.com/teamhanko/hanko/backend/persistence/models"
-	"github.com/teamhanko/hanko/backend/session"
-	"net/http"
-	"strings"
-	"time"
+	auditlog "github.com/teamhanko/hanko/backend/v2/audit_log"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	"github.com/teamhanko/hanko/backend/v2/dto"
+	"github.com/teamhanko/hanko/backend/v2/dto/intern"
+	"github.com/teamhanko/hanko/backend/v2/mapper"
+	"github.com/teamhanko/hanko/backend/v2/persistence"
+	"github.com/teamhanko/hanko/backend/v2/persistence/models"
+	"github.com/teamhanko/hanko/backend/v2/session"
 )
 
 type WebauthnHandler struct {
@@ -59,11 +60,11 @@ func NewWebauthnHandler(cfg *config.Config, persister persistence.Persister, ses
 		Debug: false,
 		Timeouts: webauthn.TimeoutsConfig{
 			Login: webauthn.TimeoutConfig{
-				Timeout: time.Duration(cfg.Webauthn.Timeout) * time.Millisecond,
+				Timeout: time.Duration(cfg.Webauthn.Timeouts.Login) * time.Millisecond,
 				Enforce: true,
 			},
 			Registration: webauthn.TimeoutConfig{
-				Timeout: time.Duration(cfg.Webauthn.Timeout) * time.Millisecond,
+				Timeout: time.Duration(cfg.Webauthn.Timeouts.Registration) * time.Millisecond,
 				Enforce: true,
 			},
 		},
@@ -111,9 +112,10 @@ func (h *WebauthnHandler) BeginRegistration(c echo.Context) error {
 		webauthn.WithAuthenticatorSelection(protocol.AuthenticatorSelection{
 			RequireResidentKey: &t,
 			ResidentKey:        protocol.ResidentKeyRequirementRequired,
-			UserVerification:   protocol.UserVerificationRequirement(h.cfg.Webauthn.UserVerification),
+			UserVerification:   protocol.UserVerificationRequirement(h.cfg.Passkey.UserVerification),
 		}),
-		webauthn.WithConveyancePreference(protocol.PreferDirectAttestation),
+
+		webauthn.WithConveyancePreference(protocol.ConveyancePreference(h.cfg.Passkey.AttestationPreference)),
 		// don't set the excludeCredentials list, so an already registered device can be re-registered
 	)
 
@@ -210,7 +212,7 @@ func (h *WebauthnHandler) FinishRegistration(c echo.Context) error {
 
 		backupEligible := request.Response.AttestationObject.AuthData.Flags.HasBackupEligible()
 		backupState := request.Response.AttestationObject.AuthData.Flags.HasBackupState()
-		model := intern.WebauthnCredentialToModel(credential, sessionData.UserId, backupEligible, backupState, h.authenticatorMetadata)
+		model := intern.WebauthnCredentialToModel(credential, sessionData.UserId, backupEligible, backupState, false, h.authenticatorMetadata)
 		err = h.persister.GetWebauthnCredentialPersisterWithConnection(tx).Create(*model)
 		if err != nil {
 			return fmt.Errorf("failed to store webauthn credential: %w", err)
@@ -231,7 +233,7 @@ func (h *WebauthnHandler) FinishRegistration(c echo.Context) error {
 }
 
 type BeginAuthenticationBody struct {
-	UserID *string `json:"user_id" validate:"uuid4"`
+	UserID *string `json:"user_id" validate:"uuid"`
 }
 
 // BeginAuthentication returns credential assertion options for the WebAuthnAPI.
@@ -271,7 +273,7 @@ func (h *WebauthnHandler) BeginAuthentication(c echo.Context) error {
 		if len(webauthnUser.WebAuthnCredentials()) > 0 {
 			options, sessionData, err = h.webauthn.BeginLogin(
 				webauthnUser,
-				webauthn.WithUserVerification(protocol.UserVerificationRequirement(h.cfg.Webauthn.UserVerification)),
+				webauthn.WithUserVerification(protocol.UserVerificationRequirement(h.cfg.Passkey.UserVerification)),
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create webauthn assertion options: %w", err)
@@ -281,7 +283,7 @@ func (h *WebauthnHandler) BeginAuthentication(c echo.Context) error {
 	if options == nil && sessionData == nil {
 		var err error
 		options, sessionData, err = h.webauthn.BeginDiscoverableLogin(
-			webauthn.WithUserVerification(protocol.UserVerificationRequirement(h.cfg.Webauthn.UserVerification)),
+			webauthn.WithUserVerification(protocol.UserVerificationRequirement(h.cfg.Passkey.UserVerification)),
 		)
 		if err != nil {
 			return fmt.Errorf("failed to create webauthn assertion options for discoverable login: %w", err)
@@ -406,6 +408,33 @@ func (h *WebauthnHandler) FinishAuthentication(c echo.Context) error {
 			now := time.Now().UTC()
 			dbCred.LastUsedAt = &now
 
+			signCount := int(request.Response.AuthenticatorData.Counter)
+
+			if dbCred.SignCount > 0 && signCount > 0 && signCount <= dbCred.SignCount {
+				signCountErr := fmt.Errorf(
+					"signature counter mismatch: expected received signature count %d to be greater than current count %d",
+					signCount,
+					dbCred.SignCount,
+				)
+
+				logErr := h.auditLogger.CreateWithConnection(
+					tx,
+					c,
+					models.AuditLogWebAuthnAuthenticationFinalFailed,
+					user,
+					fmt.Errorf("assertion validation failed"),
+				)
+
+				if logErr != nil {
+					return fmt.Errorf(CreateAuditLogFailureMessage, logErr)
+				}
+
+				return echo.NewHTTPError(http.StatusBadRequest, "failed to validate assertion").
+					SetInternal(signCountErr)
+			}
+
+			dbCred.SignCount = signCount
+
 			err = h.persister.GetWebauthnCredentialPersisterWithConnection(tx).Update(*dbCred)
 			if err != nil {
 				return fmt.Errorf("failed to update webauthn credential: %w", err)
@@ -417,12 +446,15 @@ func (h *WebauthnHandler) FinishAuthentication(c echo.Context) error {
 			return fmt.Errorf("failed to delete assertion session data: %w", err)
 		}
 
-		var emailJwt *dto.EmailJwt
+		var emailJwt *dto.EmailJWT
 		if e := user.Emails.GetPrimary(); e != nil {
-			emailJwt = dto.JwtFromEmailModel(e)
+			emailJwt = dto.EmailJWTFromEmailModel(e)
 		}
 
-		token, err := h.sessionManager.GenerateJWT(webauthnUser.UserId, emailJwt)
+		token, rawToken, err := h.sessionManager.GenerateJWT(dto.UserJWT{
+			UserID: user.ID.String(),
+			Email:  emailJwt,
+		})
 		if err != nil {
 			return fmt.Errorf("failed to generate jwt: %w", err)
 		}
@@ -430,6 +462,11 @@ func (h *WebauthnHandler) FinishAuthentication(c echo.Context) error {
 		cookie, err := h.sessionManager.GenerateCookie(token)
 		if err != nil {
 			return fmt.Errorf("failed to create session cookie: %w", err)
+		}
+
+		err = storeSession(h.cfg, h.persister, webauthnUser.UserId, rawToken, c, tx)
+		if err != nil {
+			return fmt.Errorf("failed to store session in DB: %w", err)
 		}
 
 		c.Response().Header().Set("X-Session-Lifetime", fmt.Sprintf("%d", cookie.MaxAge))

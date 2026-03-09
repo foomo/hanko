@@ -1,21 +1,9 @@
 import { Fragment } from "preact";
-import {
-  StateUpdater,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-} from "preact/compat";
-
-import {
-  Email,
-  HankoError,
-  TooManyRequestsError,
-} from "@teamhanko/hanko-frontend-sdk";
+import { Dispatch, SetStateAction, useContext, useMemo } from "preact/compat";
+import { State, Email } from "@teamhanko/hanko-frontend-sdk";
 
 import styles from "./styles.sass";
 
-import { AppContext } from "../../contexts/AppProvider";
 import { TranslateContext } from "@denysvuika/preact-translate";
 
 import Accordion from "./Accordion";
@@ -23,232 +11,169 @@ import Paragraph from "../paragraph/Paragraph";
 import Headline2 from "../headline/Headline2";
 import Link from "../link/Link";
 
-import ProfilePage from "../../pages/ProfilePage";
-import LoginPasscodePage from "../../pages/LoginPasscodePage";
-
 interface Props {
-  setError: (e: HankoError) => void;
-  checkedItemIndex?: number;
-  setCheckedItemIndex: StateUpdater<number>;
+  checkedItemID?: string;
+  setCheckedItemID: Dispatch<SetStateAction<string>>;
+  flowState: State<"profile_init">;
+  onState(state: State<any>): Promise<void>;
 }
 
 const ListEmailsAccordion = ({
-  setError,
-  checkedItemIndex,
-  setCheckedItemIndex,
+  checkedItemID,
+  setCheckedItemID,
+  flowState,
+  onState,
 }: Props) => {
   const { t } = useContext(TranslateContext);
-  const { hanko, user, emails, setEmails, setPage, setPasscode } =
-    useContext(AppContext);
+  const isDisabled = useMemo(() => false, []);
 
-  const [isPrimaryEmailLoading, setIsPrimaryEmailLoading] =
-    useState<boolean>(false);
-  const [isVerificationLoading, setIsVerificationLoading] =
-    useState<boolean>(false);
-  const [isDeletionLoading, setIsDeletionLoading] = useState<boolean>(false);
-
-  const isDisabled = useMemo(
-    () => isPrimaryEmailLoading || isVerificationLoading || isDeletionLoading,
-    [isDeletionLoading, isPrimaryEmailLoading, isVerificationLoading]
-  );
-
-  const renderPasscode = useCallback(
-    (email: Email) => {
-      const onBackHandler = () => setPage(<ProfilePage />);
-
-      const showPasscodePage = (e?: HankoError) =>
-        setPage(
-          <LoginPasscodePage
-            userID={user.id}
-            emailID={email.id}
-            emailAddress={email.address}
-            initialError={e}
-            onSuccess={() =>
-              hanko.email.list().then(setEmails).then(onBackHandler)
-            }
-            onBack={onBackHandler}
-          />
-        );
-
-      return hanko.passcode
-        .initialize(user.id, email.id, true)
-        .then(setPasscode)
-        .then(() => showPasscodePage())
-        .catch((e) => {
-          if (e instanceof TooManyRequestsError) {
-            showPasscodePage(e);
-            return;
-          }
-          throw e;
-        });
-    },
-    [hanko.email, hanko.passcode, setEmails, setPage, setPasscode, user.id]
-  );
-
-  const changePrimaryEmail = (event: Event, email: Email) => {
+  const onEmailDelete = async (event: Event, emailID: string) => {
     event.preventDefault();
-    setIsPrimaryEmailLoading(true);
-    hanko.email
-      .setPrimaryEmail(email.id)
-      .then(() => setError(null))
-      .then(() => hanko.email.list())
-      .then(setEmails)
-      .finally(() => setIsPrimaryEmailLoading(false))
-      .catch(setError);
+    const nextState = await flowState.actions.email_delete.run(
+      {
+        email_id: emailID,
+      },
+      { dispatchAfterStateChangeEvent: false },
+    );
+    return onState(nextState);
   };
 
-  const deleteEmail = (event: Event, email: Email) => {
+  const onEmailSetPrimary = async (event: Event, emailID: string) => {
     event.preventDefault();
-    setIsDeletionLoading(true);
-    hanko.email
-      .delete(email.id)
-      .then(() => {
-        setError(null);
-        setCheckedItemIndex(null);
-        setIsDeletionLoading(false);
-        return;
-      })
-      .then(() => hanko.email.list())
-      .then(setEmails)
-      .finally(() => setIsDeletionLoading(false))
-      .catch(setError);
+    const nextState = await flowState.actions.email_set_primary.run(
+      {
+        email_id: emailID,
+      },
+      { dispatchAfterStateChangeEvent: false },
+    );
+    return onState(nextState);
   };
 
-  const verifyEmail = (event: Event, email: Email) => {
-    setIsVerificationLoading(true);
-    renderPasscode(email)
-      .finally(() => setIsVerificationLoading(false))
-      .catch(setError);
+  const onEmailVerify = async (event: Event, emailID: string) => {
+    event.preventDefault();
+    const nextState = await flowState.actions.email_verify.run(
+      {
+        email_id: emailID,
+      },
+      { dispatchAfterStateChangeEvent: false },
+    );
+    return onState(nextState);
   };
 
   const labels = (email: Email) => {
     const description = (
       <span className={styles.description}>
         {!email.is_verified ? (
-          <Fragment>
+          <>
             {" -"} {t("labels.unverifiedEmail")}
-          </Fragment>
+          </>
         ) : email.is_primary ? (
-          <Fragment>
+          <>
             {" -"} {t("labels.primaryEmail")}
-          </Fragment>
+          </>
         ) : null}
       </span>
     );
 
     return email.is_primary ? (
-      <Fragment>
+      <>
         <b>{email.address}</b>
         {description}
-      </Fragment>
+      </>
     ) : (
-      <Fragment>
+      <>
         {email.address}
         {description}
-      </Fragment>
+      </>
     );
   };
 
   const contents = (email: Email) => (
-    <Fragment>
+    <>
       {!email.is_primary ? (
-        <Fragment>
+        <>
           <Paragraph>
             <Headline2>{t("headlines.setPrimaryEmail")}</Headline2>
             {t("texts.setPrimaryEmail")}
             <br />
             <Link
-              disabled={isDisabled}
-              isLoading={isPrimaryEmailLoading}
-              onClick={(event) => changePrimaryEmail(event, email)}
+              flowAction={flowState.actions.email_set_primary}
+              onClick={(event: Event) => onEmailSetPrimary(event, email.id)}
               loadingSpinnerPosition={"right"}
             >
               {t("labels.setAsPrimaryEmail")}
             </Link>
           </Paragraph>
-        </Fragment>
+        </>
       ) : (
-        <Fragment>
+        <>
           <Paragraph>
             <Headline2>{t("headlines.isPrimaryEmail")}</Headline2>
             {t("texts.isPrimaryEmail")}
           </Paragraph>
-        </Fragment>
+        </>
       )}
       {email.is_verified ? (
-        <Fragment>
+        <>
           <Paragraph>
             <Headline2>{t("headlines.emailVerified")}</Headline2>
             {t("texts.emailVerified")}
           </Paragraph>
-        </Fragment>
+        </>
       ) : (
-        <Fragment>
+        <>
           <Paragraph>
             <Headline2>{t("headlines.emailUnverified")}</Headline2>
             {t("texts.emailUnverified")}
             <br />
             <Link
-              disabled={isDisabled}
-              isLoading={isVerificationLoading}
-              onClick={(event) => verifyEmail(event, email)}
+              flowAction={flowState.actions.email_verify}
+              onClick={(event) => onEmailVerify(event, email.id)}
               loadingSpinnerPosition={"right"}
             >
               {t("labels.verify")}
             </Link>
           </Paragraph>
-        </Fragment>
+        </>
       )}
-      {!email.is_primary ? (
-        <Fragment>
+      {flowState.actions.email_delete.inputs.email_id.allowed_values
+        ?.map((e) => e.value)
+        .includes(email.id) ? (
+        <>
           <Paragraph>
             <Headline2>{t("headlines.emailDelete")}</Headline2>
             {t("texts.emailDelete")}
             <br />
             <Link
               dangerous
-              isLoading={isDeletionLoading}
+              flowAction={flowState.actions.email_delete}
+              onClick={(event) => onEmailDelete(event, email.id)}
               disabled={isDisabled}
-              onClick={(event) => deleteEmail(event, email)}
               loadingSpinnerPosition={"right"}
             >
               {t("labels.delete")}
             </Link>
           </Paragraph>
-        </Fragment>
-      ) : (
-        <Fragment>
-          <Paragraph>
-            <Headline2>{t("headlines.emailDelete")}</Headline2>
-            {t("texts.emailDeletePrimary")}
-          </Paragraph>
-        </Fragment>
-      )}
+        </>
+      ) : null}
       {email.identities?.length > 0 ? (
-        <Fragment>
+        <>
           <Paragraph>
             <Headline2>{t("headlines.connectedAccounts")}</Headline2>
             {email.identities.map((i) => i.provider).join(", ")}
           </Paragraph>
-        </Fragment>
-      ) : email.identity ? (
-        <Fragment>
-          <Paragraph>
-            <Headline2>{t("headlines.connectedAccounts")}</Headline2>
-            {email.identity.provider}
-          </Paragraph>
-        </Fragment>
+        </>
       ) : null}
-    </Fragment>
+    </>
   );
   return (
     <Accordion
-      name={"email-dropdown"}
+      name={"email-edit-dropdown"}
       columnSelector={labels}
-      data={emails}
+      data={flowState.payload.user.emails}
       contentSelector={contents}
-      checkedItemIndex={checkedItemIndex}
-      setCheckedItemIndex={setCheckedItemIndex}
+      checkedItemID={checkedItemID}
+      setCheckedItemID={setCheckedItemID}
     />
   );
 };

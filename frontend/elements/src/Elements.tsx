@@ -3,13 +3,16 @@ import registerCustomElement from "@teamhanko/preact-custom-element";
 import AppProvider, {
   ComponentName,
   GlobalOptions,
+  HankoAuthMode,
 } from "./contexts/AppProvider";
 import { CookieSameSite, Hanko } from "@teamhanko/hanko-frontend-sdk";
 import { defaultTranslations, Translations } from "./i18n/translations";
+import { SessionTokenLocation } from "@teamhanko/hanko-frontend-sdk/dist/lib/client/HttpClient";
 
 export interface HankoAuthAdditionalProps {
-  experimental?: string;
   prefilledEmail?: string;
+  prefilledUsername?: string;
+  mode?: HankoAuthMode;
 }
 
 export declare interface HankoAuthElementProps
@@ -28,6 +31,23 @@ declare global {
     // eslint-disable-next-line no-unused-vars
     interface IntrinsicElements {
       "hanko-auth": HankoAuthElementProps;
+      "hanko-login": HankoAuthElementProps;
+      "hanko-registration": HankoAuthElementProps;
+      "hanko-profile": HankoProfileElementProps;
+      "hanko-events": HankoEventsElementProps;
+    }
+  }
+}
+
+// React 19 and later
+declare module "react" {
+  // eslint-disable-next-line no-unused-vars
+  namespace JSX {
+    // eslint-disable-next-line no-unused-vars
+    interface IntrinsicElements {
+      "hanko-auth": HankoAuthElementProps;
+      "hanko-login": HankoAuthElementProps;
+      "hanko-registration": HankoAuthElementProps;
       "hanko-profile": HankoProfileElementProps;
       "hanko-events": HankoEventsElementProps;
     }
@@ -45,6 +65,8 @@ export interface RegisterOptions {
   storageKey?: string;
   cookieDomain?: string;
   cookieSameSite?: CookieSameSite;
+  sessionCheckInterval?: number;
+  sessionTokenLocation?: SessionTokenLocation;
 }
 
 export interface RegisterResult {
@@ -62,22 +84,51 @@ const globalOptions: GlobalOptions = {};
 const createHankoComponent = (
   componentName: ComponentName,
   props: Record<string, any>,
-) => (
-  <AppProvider
-    componentName={componentName}
-    globalOptions={globalOptions}
-    {...props}
-  />
-);
+) => {
+  // In most browser the IDL property (script['nonce']) is the only way to access nonces.
+  // Because of that the nonce would be an empty string in the props property.
+  // https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/nonce
+  const nonce = document
+    .getElementsByTagName(`hanko-${componentName}`)
+    // @ts-ignore
+    .item(0)?.nonce;
+  return (
+    <AppProvider
+      componentName={componentName}
+      globalOptions={globalOptions}
+      createWebauthnAbortSignal={createWebauthnAbortSignal}
+      {...props}
+      nonce={nonce}
+    />
+  );
+};
 
-const HankoAuth = (props: HankoAuthElementProps) =>
-  createHankoComponent("auth", props);
+const HankoAuth = (props: HankoAuthElementProps) => {
+  return createHankoComponent("auth", props);
+};
+
+const HankoLogin = (props: HankoAuthElementProps) =>
+  createHankoComponent("login", props);
+
+const HankoRegistration = (props: HankoProfileElementProps) =>
+  createHankoComponent("registration", props);
 
 const HankoProfile = (props: HankoProfileElementProps) =>
   createHankoComponent("profile", props);
 
 const HankoEvents = (props: HankoEventsElementProps) =>
   createHankoComponent("events", props);
+
+let webauthnAbortController = new AbortController();
+
+const createWebauthnAbortSignal = () => {
+  if (webauthnAbortController) {
+    webauthnAbortController.abort();
+  }
+
+  webauthnAbortController = new AbortController();
+  return webauthnAbortController.signal;
+};
 
 const _register = async ({
   tagName,
@@ -96,6 +147,14 @@ export const register = async (
   api: string,
   options: RegisterOptions = {},
 ): Promise<RegisterResult> => {
+  const observedAttributes = [
+    "api",
+    "lang",
+    "prefilled-email",
+    "entry",
+    "mode",
+  ];
+
   options = {
     shadow: true,
     injectStyles: true,
@@ -104,6 +163,8 @@ export const register = async (
     translations: null,
     translationsLocation: "/i18n",
     fallbackLanguage: "en",
+    storageKey: "hanko",
+    sessionCheckInterval: 30000,
     ...options,
   };
 
@@ -112,6 +173,8 @@ export const register = async (
     cookieDomain: options.cookieDomain,
     cookieSameSite: options.cookieSameSite,
     localStorageKey: options.storageKey,
+    sessionCheckInterval: options.sessionCheckInterval,
+    sessionTokenLocation: options.sessionTokenLocation,
   });
   globalOptions.injectStyles = options.injectStyles;
   globalOptions.enablePasskeys = options.enablePasskeys;
@@ -119,19 +182,33 @@ export const register = async (
   globalOptions.translations = options.translations || defaultTranslations;
   globalOptions.translationsLocation = options.translationsLocation;
   globalOptions.fallbackLanguage = options.fallbackLanguage;
-
+  globalOptions.storageKey = options.storageKey;
   await Promise.all([
     _register({
       ...options,
       tagName: "hanko-auth",
       entryComponent: HankoAuth,
-      observedAttributes: ["api", "lang", "experimental", "prefilled-email"],
+      observedAttributes,
+    }),
+    _register({
+      ...options,
+      tagName: "hanko-login",
+      entryComponent: HankoLogin,
+      observedAttributes,
+    }),
+    _register({
+      ...options,
+      tagName: "hanko-registration",
+      entryComponent: HankoRegistration,
+      observedAttributes,
     }),
     _register({
       ...options,
       tagName: "hanko-profile",
       entryComponent: HankoProfile,
-      observedAttributes: ["api", "lang"],
+      observedAttributes: observedAttributes.filter((attribute) =>
+        ["api", "lang"].includes(attribute),
+      ),
     }),
     _register({
       ...options,

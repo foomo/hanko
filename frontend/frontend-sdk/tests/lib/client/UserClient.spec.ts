@@ -1,74 +1,22 @@
-import {
-  ConflictError,
-  NotFoundError,
-  TechnicalError,
-  ForbiddenError,
-  UserClient,
-} from "../../../src";
+/* eslint-env jest */
+import { UserClient } from "../../../src";
 import { Response } from "../../../src/lib/client/HttpClient";
-
-const userID = "test-user-1";
-const emailID = "test-email-1";
-const email = "test-email-1@test";
-const credentials = [{ id: "test-credential-1" }];
 
 let userClient: UserClient;
 
 beforeEach(() => {
   userClient = new UserClient("http://test.api", {
     cookieName: "hanko",
-    localStorageKey: "hanko",
     timeout: 13000,
-  });
-});
-
-describe("UserClient.getInfo()", () => {
-  it("should retrieve user info", async () => {
-    const response = new Response(new XMLHttpRequest());
-    response.ok = true;
-    response._decodedJSON = {
-      id: userID,
-      verified: true,
-      has_webauthn_credential: true,
-    };
-
-    jest.spyOn(userClient.client, "post").mockResolvedValueOnce(response);
-    const getInfoResponse = userClient.getInfo(email);
-    await expect(getInfoResponse).resolves.toBe(response._decodedJSON);
-
-    expect(userClient.client.post).toHaveBeenCalledWith("/user", {
-      email,
-    });
-  });
-
-  it("should throw error when user not found", async () => {
-    const response = new Response(new XMLHttpRequest());
-    response.status = 404;
-    jest.spyOn(userClient.client, "post").mockResolvedValue(response);
-
-    const user = userClient.getInfo(email);
-    await expect(user).rejects.toThrow(NotFoundError);
-  });
-
-  it("should throw error when API response is not ok", async () => {
-    const response = new Response(new XMLHttpRequest());
-    userClient.client.post = jest.fn().mockResolvedValue(response);
-
-    const user = userClient.getInfo(email);
-    await expect(user).rejects.toThrowError(TechnicalError);
-  });
-
-  it("should throw error on API communication failure", async () => {
-    userClient.client.post = jest
-      .fn()
-      .mockRejectedValue(new Error("Test error"));
-
-    const user = userClient.getInfo(email);
-    await expect(user).rejects.toThrowError("Test error");
+    sessionTokenLocation: "cookie",
   });
 });
 
 describe("UserClient.getCurrent()", () => {
+  const userID = "test-user-1";
+  const email = "test-email-1@test";
+  const credentials = [{ id: "test-credential-1" }];
+
   it("should retrieve currently logged in user", async () => {
     const responseMe = new Response(new XMLHttpRequest());
     responseMe.ok = true;
@@ -95,7 +43,7 @@ describe("UserClient.getCurrent()", () => {
     expect(userClient.client.get).toHaveBeenNthCalledWith(1, "/me");
     expect(userClient.client.get).toHaveBeenNthCalledWith(
       2,
-      `/users/${userID}`
+      `/users/${userID}`,
     );
   });
 
@@ -127,7 +75,7 @@ describe("UserClient.getCurrent()", () => {
 
       const user = userClient.getCurrent();
       await expect(user).rejects.toThrow(error);
-    }
+    },
   );
 
   it("should throw error on API communication failure", async () => {
@@ -136,74 +84,67 @@ describe("UserClient.getCurrent()", () => {
       .mockRejectedValue(new Error("Test error"));
 
     const user = userClient.getCurrent();
-    await expect(user).rejects.toThrowError("Test error");
+    await expect(user).rejects.toThrow("Test error");
   });
 });
 
-describe("UserClient.create()", () => {
-  it("should create a user", async () => {
-    Object.defineProperty(global, "XMLHttpRequest", {
-      value: jest.fn().mockImplementation(() => ({
-        response: JSON.stringify({ foo: "bar" }),
-        open: jest.fn(),
-        setRequestHeader: jest.fn(),
-        getResponseHeader: jest.fn(),
-        getAllResponseHeaders: jest.fn().mockReturnValue(""),
-        send: jest.fn(),
-      })),
-      configurable: true,
-      writable: true,
-    });
+describe("UserClient.getCurrentUser()", () => {
+  const userID = "test-user-1";
 
-    const response = new Response(new XMLHttpRequest());
-    response.ok = true;
-    response._decodedJSON = {
+  it("should retrieve currently logged in user", async () => {
+    const responseMe = new Response(new XMLHttpRequest());
+    responseMe.ok = true;
+
+    responseMe._decodedJSON = {
       user_id: userID,
-      email_id: emailID,
+      emails: [
+        {
+          id: "test-email-1",
+          address: "test-email-1@test",
+          is_verified: true,
+          is_primary: true,
+        },
+      ],
+      created_at: "2024-01-01T00:00:00Z",
+      updated_at: "2024-01-01T00:00:00Z",
     };
 
-    jest.spyOn(userClient.client, "post").mockResolvedValueOnce(response);
-    const getInfoResponse = userClient.create(email);
-    await expect(getInfoResponse).resolves.toBe(response._decodedJSON);
+    jest.spyOn(userClient.client, "get").mockResolvedValueOnce(responseMe);
 
-    expect(userClient.client.post).toHaveBeenCalledWith("/users", {
-      email,
-    });
+    const user = userClient.getCurrentUser();
+    await expect(user).resolves.toBe(responseMe._decodedJSON);
+
+    expect(userClient.client.get).toHaveBeenCalledTimes(1);
+    expect(userClient.client.get).toHaveBeenCalledWith("/me");
   });
 
-  it("should throw error when user already exists", async () => {
-    const response = new Response(new XMLHttpRequest());
-    response.status = 409;
-    jest.spyOn(userClient.client, "post").mockResolvedValue(response);
+  it.each`
+    status | error
+    ${400} | ${"Technical error"}
+    ${401} | ${"Unauthorized error"}
+    ${404} | ${"Technical error"}
+    ${500} | ${"Technical error"}
+  `(
+    "should throw error if API returns an error status",
+    async ({ status, error }) => {
+      const responseMe = new Response(new XMLHttpRequest());
+      responseMe.status = status;
+      responseMe.ok = status >= 200 && status <= 299;
 
-    const user = userClient.create(email);
-    await expect(user).rejects.toThrow(ConflictError);
-  });
+      jest.spyOn(userClient.client, "get").mockResolvedValueOnce(responseMe);
 
-  it("should throw error when signup is disabled", async () => {
-    const response = new Response(new XMLHttpRequest());
-    response.status = 403;
-    jest.spyOn(userClient.client, "post").mockResolvedValue(response);
-
-    const user = userClient.create(email);
-    await expect(user).rejects.toThrow(ForbiddenError);
-  });
-
-  it("should throw error if API response is not ok (no 2xx, no 4xx)", async () => {
-    const response = new Response(new XMLHttpRequest());
-    jest.spyOn(userClient.client, "post").mockResolvedValue(response);
-
-    const user = userClient.create(email);
-    await expect(user).rejects.toThrow(TechnicalError);
-  });
+      const user = userClient.getCurrentUser();
+      await expect(user).rejects.toThrow(error);
+    },
+  );
 
   it("should throw error on API communication failure", async () => {
-    userClient.client.post = jest
+    userClient.client.get = jest
       .fn()
       .mockRejectedValue(new Error("Test error"));
 
-    const user = userClient.create(email);
-    await expect(user).rejects.toThrowError("Test error");
+    const user = userClient.getCurrentUser();
+    await expect(user).rejects.toThrow("Test error");
   });
 });
 
@@ -240,39 +181,6 @@ describe("UserClient.logout()", () => {
       await expect(userClient.logout()).rejects.toThrow(error);
 
       expect(userClient.client.post).toHaveBeenCalledWith("/logout");
-    }
-  );
-});
-
-describe("UserClient.delete()", () => {
-  it("should return true if deletion is successful", async () => {
-    const response = new Response(new XMLHttpRequest());
-    response.status = 204;
-    response.ok = true;
-
-    jest.spyOn(userClient.client, "delete").mockResolvedValueOnce(response);
-
-    await expect(userClient.delete()).resolves.not.toThrow();
-    expect(userClient.client.delete).toHaveBeenCalledWith("/user");
-  });
-
-  it.each`
-    status | error
-    ${401} | ${"Unauthorized error"}
-    ${404} | ${"Technical error"}
-    ${500} | ${"Technical error"}
-  `(
-    "should throw error if API returns an error status",
-    async ({ status, error }) => {
-      const response = new Response(new XMLHttpRequest());
-      response.status = status;
-      response.ok = status >= 200 && status <= 299;
-
-      jest.spyOn(userClient.client, "delete").mockResolvedValueOnce(response);
-
-      await expect(userClient.delete()).rejects.toThrow(error);
-
-      expect(userClient.client.delete).toHaveBeenCalledWith("/user");
-    }
+    },
   );
 });

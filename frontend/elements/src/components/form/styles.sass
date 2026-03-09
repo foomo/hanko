@@ -21,6 +21,9 @@
     flex-grow: 1
     flex-basis: min-content
 
+    &.maxWidth
+      min-width: 100%
+
 // Button Styles
 .button
   @include mixins.font
@@ -29,13 +32,34 @@
   white-space: nowrap
   width: 100%
   min-width: variables.$button-min-width
-  height: variables.$item-height
+  min-height: variables.$item-height
   outline: none
   cursor: pointer
   transition: 0.1s ease-out
   flex-grow: 1
   flex-shrink: 1
   display: inline-flex
+  position: relative
+
+  &[data-bubble]
+    &:before
+      @include mixins.font
+      @include mixins.border
+
+      padding: 2px 8px
+      font-size: 9px
+      line-height: normal
+      content: attr(data-bubble)
+      display: block
+      position: absolute
+      bottom: 80%
+      left: 80%
+      white-space: nowrap
+      width: max-content
+      text-align: center
+      background-color: inherit
+      color: variables.$brand-color-shade-1
+      border-color: variables.$brand-color-shade-1
 
   &:disabled
     cursor: default
@@ -64,8 +88,8 @@
   &.secondary
     color: variables.$color
     background: variables.$background-color
-    border-color: variables.$color
-    justify-content: left
+    border-color: variables.$color-shade-1
+    justify-content: center
 
   &.secondary:hover
     color: variables.$color
@@ -89,8 +113,13 @@
     flex-grow: 0
     width: auto
 
-// Input Styles
+.caption
+  flex-wrap: wrap
+  display: flex
+  justify-content: space-between
+  align-items: baseline
 
+// Input Styles
 .inputWrapper
   flex-grow: 1
   position: relative
@@ -106,6 +135,9 @@
   color: variables.$color
   border-color: variables.$color-shade-1
   background: variables.$background-color
+
+  &.error
+    border-color: variables.$error-color
 
   padding: 0 .5rem
   outline: none

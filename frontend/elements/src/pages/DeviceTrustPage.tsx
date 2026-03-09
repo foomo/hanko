@@ -1,0 +1,52 @@
+import { useContext } from "preact/compat";
+import { TranslateContext } from "@denysvuika/preact-translate";
+import { State } from "@teamhanko/hanko-frontend-sdk";
+
+import Content from "../components/wrapper/Content";
+import Form from "../components/form/Form";
+import Button from "../components/form/Button";
+import ErrorBox from "../components/error/ErrorBox";
+import Headline1 from "../components/headline/Headline1";
+
+import { useFlowState } from "../hooks/UseFlowState";
+import Paragraph from "../components/paragraph/Paragraph";
+import Footer from "../components/wrapper/Footer";
+import Link from "../components/link/Link";
+
+interface Props {
+  state: State<"device_trust">;
+}
+
+const DeviceTrustPage = (props: Props) => {
+  const { t } = useContext(TranslateContext);
+  const { flowState } = useFlowState(props.state);
+
+  return (
+    <>
+      <Content>
+        <Headline1>{t("headlines.trustDevice")}</Headline1>
+        <ErrorBox flowError={flowState?.error} />
+        <Paragraph>{t("texts.trustDevice")}</Paragraph>
+        <Form flowAction={flowState.actions.trust_device}>
+          <Button>{t("labels.trustDevice")}</Button>
+        </Form>
+      </Content>
+      <Footer>
+        <Link
+          flowAction={flowState.actions.back}
+          loadingSpinnerPosition={"right"}
+        >
+          {t("labels.back")}
+        </Link>
+        <Link
+          flowAction={flowState.actions.skip}
+          loadingSpinnerPosition={"left"}
+        >
+          {t("labels.skip")}
+        </Link>
+      </Footer>
+    </>
+  );
+};
+
+export default DeviceTrustPage;

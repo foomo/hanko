@@ -2,12 +2,13 @@ package handler
 
 import (
 	"fmt"
-	"github.com/h2non/gock"
-	"github.com/teamhanko/hanko/backend/thirdparty"
-	"github.com/teamhanko/hanko/backend/utils"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/h2non/gock"
+	"github.com/teamhanko/hanko/backend/v2/thirdparty"
+	"github.com/teamhanko/hanko/backend/v2/utils"
 )
 
 func (s *thirdPartySuite) TestThirdPartyHandler_Callback_Error_LinkingNotAllowedForProvider() {
@@ -196,7 +197,7 @@ func (s *thirdPartySuite) TestThirdPartyHandler_Callback_Error_NoThirdPartyCooki
 		s.NoError(err)
 
 		s.Equal(thirdparty.ErrorCodeInvalidRequest, location.Query().Get("error"))
-		s.Equal("thirdparty state cookie is missing", location.Query().Get("error_description"))
+		s.Equal("expected state must not be empty", location.Query().Get("error_description"))
 
 		logs, lerr := s.Storage.GetAuditLogPersister().List(0, 0, nil, nil, []string{"thirdparty_signin_signup_failed"}, "", "", "", "")
 		s.NoError(lerr)
@@ -362,7 +363,7 @@ func (s *thirdPartySuite) TestThirdPartyHandler_Callback_Error_VerificationRequi
 		})
 
 	cfg := s.setUpConfig([]string{"google"}, []string{"https://example.com"})
-	cfg.Emails.RequireVerification = true
+	cfg.Email.RequireVerification = true
 
 	state, err := thirdparty.GenerateState(cfg, "google", "https://example.com")
 	s.NoError(err)

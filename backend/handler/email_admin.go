@@ -6,12 +6,12 @@ import (
 	"github.com/gobuffalo/pop/v6"
 	"github.com/gofrs/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/teamhanko/hanko/backend/config"
-	"github.com/teamhanko/hanko/backend/dto/admin"
-	"github.com/teamhanko/hanko/backend/persistence"
-	"github.com/teamhanko/hanko/backend/persistence/models"
-	"github.com/teamhanko/hanko/backend/webhooks/events"
-	"github.com/teamhanko/hanko/backend/webhooks/utils"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	"github.com/teamhanko/hanko/backend/v2/dto/admin"
+	"github.com/teamhanko/hanko/backend/v2/persistence"
+	"github.com/teamhanko/hanko/backend/v2/persistence/models"
+	"github.com/teamhanko/hanko/backend/v2/webhooks/events"
+	"github.com/teamhanko/hanko/backend/v2/webhooks/utils"
 	"net/http"
 	"strings"
 )
@@ -40,23 +40,6 @@ func NewEmailAdminHandler(cfg *config.Config, persister persistence.Persister) E
 		cfg:       cfg,
 		persister: persister,
 	}
-}
-
-func loadDto[I admin.EmailRequests](ctx echo.Context) (*I, error) {
-	var adminDto I
-	err := ctx.Bind(&adminDto)
-	if err != nil {
-		ctx.Logger().Error(err)
-		return nil, echo.NewHTTPError(http.StatusBadRequest, err)
-	}
-
-	err = ctx.Validate(adminDto)
-	if err != nil {
-		ctx.Logger().Error(err)
-		return nil, echo.NewHTTPError(http.StatusBadRequest, err)
-	}
-
-	return &adminDto, nil
 }
 
 func (h *emailAdminHandler) List(ctx echo.Context) error {
@@ -100,7 +83,7 @@ func (h *emailAdminHandler) Create(ctx echo.Context) error {
 		return fmt.Errorf("failed to count user emails: %w", err)
 	}
 
-	if emailCount >= h.cfg.Emails.MaxNumOfAddresses {
+	if emailCount >= h.cfg.Email.Limit {
 		return echo.NewHTTPError(http.StatusConflict).SetInternal(errors.New("max number of email addresses reached"))
 	}
 

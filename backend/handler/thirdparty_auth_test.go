@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/teamhanko/hanko/backend/thirdparty"
+	"github.com/teamhanko/hanko/backend/v2/thirdparty"
 )
 
 func (s *thirdPartySuite) TestThirdPartyHandler_Auth() {
@@ -67,6 +67,15 @@ func (s *thirdPartySuite) TestThirdPartyHandler_Auth() {
 			expectedBaseURL:     thirdparty.MicrosoftOAuthAuthEndpoint,
 		},
 		{
+			name:                "successful redirect to facebook",
+			referer:             "https://login.test.example",
+			enabledProviders:    []string{"facebook"},
+			allowedRedirectURLs: []string{"https://*.test.example"},
+			requestedProvider:   "facebook",
+			requestedRedirectTo: "https://app.test.example",
+			expectedBaseURL:     thirdparty.FacebookOauthAuthEndpoint,
+		},
+		{
 			name:                     "error redirect on missing provider",
 			referer:                  "https://login.test.example",
 			requestedRedirectTo:      "https://app.test.example",
@@ -101,7 +110,7 @@ func (s *thirdPartySuite) TestThirdPartyHandler_Auth() {
 			requestedRedirectTo:      "https://app.test.example",
 			expectedBaseURL:          "https://login.test.example",
 			expectedError:            thirdparty.ErrorCodeInvalidRequest,
-			expectedErrorDescription: "is not supported",
+			expectedErrorDescription: "unknown provider",
 		},
 		{
 			name:                     "error redirect when requesting a redirectTo that is not allowed",
@@ -121,7 +130,7 @@ func (s *thirdPartySuite) TestThirdPartyHandler_Auth() {
 			requestedRedirectTo:      "https://app.test.example",
 			expectedBaseURL:          "https://error.test.example",
 			expectedError:            thirdparty.ErrorCodeInvalidRequest,
-			expectedErrorDescription: "is not supported",
+			expectedErrorDescription: "unknown provider",
 		},
 	}
 

@@ -1,7 +1,14 @@
-import { h } from "preact";
-import { useEffect, useMemo, useRef, useState } from "preact/compat";
+import { h, InputHTMLAttributes } from "preact";
+import {
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "preact/compat";
 
 import styles from "./styles.sass";
+import { AppContext } from "../../contexts/AppProvider";
 
 // Inspired by https://github.com/devfolioco/react-otp-input
 
@@ -12,7 +19,7 @@ interface Props {
   disabled?: boolean;
 }
 
-interface DigitProps extends h.JSX.HTMLAttributes<HTMLInputElement> {
+interface DigitProps extends InputHTMLAttributes {
   index: number;
   focus: boolean;
   digit: string;
@@ -20,6 +27,7 @@ interface DigitProps extends h.JSX.HTMLAttributes<HTMLInputElement> {
 
 const Digit = ({ index, focus, digit = "", ...props }: DigitProps) => {
   const ref = useRef(null);
+  const { uiState } = useContext(AppContext);
 
   const focusInput = () => {
     const { current: element } = ref;
@@ -28,6 +36,11 @@ const Digit = ({ index, focus, digit = "", ...props }: DigitProps) => {
       element.select();
     }
   };
+
+  const disabled = useMemo(
+    () => uiState.isDisabled || props.disabled,
+    [props, uiState],
+  );
 
   // Autofocus if it's the first input element
   useEffect(() => {
@@ -47,7 +60,6 @@ const Digit = ({ index, focus, digit = "", ...props }: DigitProps) => {
     <div className={styles.passcodeDigitWrapper}>
       <input
         {...props}
-        // @ts-ignore
         part={"input passcode-input"}
         aria-label={`${props.name}-digit-${index + 1}`}
         name={props.name + index.toString(10)}
@@ -58,6 +70,7 @@ const Digit = ({ index, focus, digit = "", ...props }: DigitProps) => {
         value={digit.charAt(0)}
         required={true}
         className={styles.input}
+        disabled={disabled}
       />
     </div>
   );

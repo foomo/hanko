@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/teamhanko/hanko/backend/config"
-	"github.com/teamhanko/hanko/backend/crypto"
-	"github.com/teamhanko/hanko/backend/crypto/aes_gcm"
-	"github.com/teamhanko/hanko/backend/persistence"
-	"github.com/teamhanko/hanko/backend/persistence/models"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	"github.com/teamhanko/hanko/backend/v2/crypto"
+	"github.com/teamhanko/hanko/backend/v2/crypto/aes_gcm"
+	"github.com/teamhanko/hanko/backend/v2/persistence"
+	"github.com/teamhanko/hanko/backend/v2/persistence/models"
 	"strings"
 	"time"
 )
@@ -19,9 +19,18 @@ type State struct {
 	IssuedAt   time.Time `json:"issued_at"`
 	ExpiresAt  time.Time `json:"expires_at"`
 	Nonce      string    `json:"nonce"`
+	IsFlow     bool      `json:"is_flow"`
 }
 
-func GenerateState(config *config.Config, persister persistence.SamlStatePersister, provider string, redirectTo string) ([]byte, error) {
+const statePrefixServiceProviderInitiated = "hanko_spi_"
+
+func GenerateStateForFlowAPI(isFlow bool) func(*State) {
+	return func(state *State) {
+		state.IsFlow = isFlow
+	}
+}
+
+func GenerateState(config *config.Config, persister persistence.SamlStatePersister, provider string, redirectTo string, options ...func(*State)) ([]byte, error) {
 	if strings.TrimSpace(provider) == "" {
 		return nil, errors.New("provider must be present")
 	}
@@ -42,6 +51,10 @@ func GenerateState(config *config.Config, persister persistence.SamlStatePersist
 		IssuedAt:   now,
 		ExpiresAt:  now.Add(time.Minute * 5),
 		Nonce:      nonce,
+	}
+
+	for _, option := range options {
+		option(&state)
 	}
 
 	stateJson, err := json.Marshal(state)
@@ -66,7 +79,9 @@ func GenerateState(config *config.Config, persister persistence.SamlStatePersist
 		return nil, fmt.Errorf("could not save state to db: %w", err)
 	}
 
-	return []byte(encryptedState), nil
+	// Add prefix to distinguish between SP initiated and IDP initiated requests in callback handler.
+	result := fmt.Sprintf("%s%s", statePrefixServiceProviderInitiated, encryptedState)
+	return []byte(result), nil
 }
 
 func VerifyState(config *config.Config, persister persistence.SamlStatePersister, state string) (*State, error) {
