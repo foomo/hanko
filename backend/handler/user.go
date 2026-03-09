@@ -10,15 +10,15 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/lestrrat-go/jwx/v2/jwt"
-	auditlog "github.com/teamhanko/hanko/backend/audit_log"
-	"github.com/teamhanko/hanko/backend/config"
-	"github.com/teamhanko/hanko/backend/dto"
-	"github.com/teamhanko/hanko/backend/dto/admin"
-	"github.com/teamhanko/hanko/backend/persistence"
-	"github.com/teamhanko/hanko/backend/persistence/models"
-	"github.com/teamhanko/hanko/backend/session"
-	"github.com/teamhanko/hanko/backend/webhooks/events"
-	"github.com/teamhanko/hanko/backend/webhooks/utils"
+	auditlog "github.com/teamhanko/hanko/backend/v2/audit_log"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	"github.com/teamhanko/hanko/backend/v2/dto"
+	"github.com/teamhanko/hanko/backend/v2/dto/admin"
+	"github.com/teamhanko/hanko/backend/v2/persistence"
+	"github.com/teamhanko/hanko/backend/v2/persistence/models"
+	"github.com/teamhanko/hanko/backend/v2/session"
+	"github.com/teamhanko/hanko/backend/v2/webhooks/events"
+	"github.com/teamhanko/hanko/backend/v2/webhooks/utils"
 )
 
 type UserHandler struct {
@@ -258,7 +258,17 @@ func (h *UserHandler) Me(c echo.Context) error {
 		return errors.New("failed to cast session object")
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"id": sessionToken.Subject()})
+	user, err := h.persister.GetUserPersister().Get(uuid.FromStringOrNil(sessionToken.Subject()))
+	if err != nil {
+		return fmt.Errorf("failed to get user: %w", err)
+	}
+
+	if user == nil {
+		return echo.NewHTTPError(http.StatusNotFound).SetInternal(errors.New("user not found"))
+	}
+
+	data := dto.ProfileDataFromUserModel(user, h.cfg)
+	return c.JSON(http.StatusOK, *data)
 }
 
 func (h *UserHandler) Delete(c echo.Context) error {

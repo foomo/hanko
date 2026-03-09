@@ -3,16 +3,17 @@ package services
 import (
 	"errors"
 	"fmt"
+	"reflect"
+	"strings"
+	"time"
+
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/gobuffalo/pop/v6"
 	"github.com/gofrs/uuid"
-	"github.com/teamhanko/hanko/backend/config"
-	"github.com/teamhanko/hanko/backend/persistence"
-	"github.com/teamhanko/hanko/backend/persistence/models"
-	"reflect"
-	"strings"
-	"time"
+	"github.com/teamhanko/hanko/backend/v2/config"
+	"github.com/teamhanko/hanko/backend/v2/persistence"
+	"github.com/teamhanko/hanko/backend/v2/persistence/models"
 )
 
 type GenerateRequestOptionsPasskeyParams struct {
@@ -184,7 +185,7 @@ func (s *webauthnService) VerifyAssertionResponse(p VerifyAssertionResponseParam
 		return nil, fmt.Errorf("failed to get session data from db: %w", err)
 	}
 
-	credentialModel, err := s.persister.GetWebauthnCredentialPersister().Get(credentialAssertionData.ID)
+	credentialModel, err := s.persister.GetWebauthnCredentialPersisterWithConnection(p.Tx).Get(credentialAssertionData.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get webauthncredential from db: %w", err)
 	}
@@ -226,6 +227,18 @@ func (s *webauthnService) VerifyAssertionResponse(p VerifyAssertionResponseParam
 	credentialModel.LastUsedAt = &now
 	credentialModel.BackupState = flags.HasBackupState()
 	credentialModel.BackupEligible = flags.HasBackupEligible()
+
+	signCount := int(credentialAssertionData.Response.AuthenticatorData.Counter)
+
+	if credentialModel.SignCount > 0 && signCount > 0 && signCount <= credentialModel.SignCount {
+		return nil, fmt.Errorf(
+			"%w: signature counter mismatch: expected received signature count (%d) to be greater than current count (%d)",
+			ErrInvalidWebauthnCredential,
+			signCount, credentialModel.SignCount,
+		)
+	}
+
+	credentialModel.SignCount = signCount
 
 	err = s.persister.GetWebauthnCredentialPersisterWithConnection(p.Tx).Update(*credentialModel)
 	if err != nil {
@@ -319,7 +332,7 @@ func (s *webauthnService) VerifyAttestationResponse(p VerifyAttestationResponseP
 		return nil, fmt.Errorf("failed to parse credential creation response; %w", err)
 	}
 
-	sessionDataModel, err := s.persister.GetWebauthnSessionDataPersister().Get(p.SessionDataID)
+	sessionDataModel, err := s.persister.GetWebauthnSessionDataPersisterWithConnection(p.Tx).Get(p.SessionDataID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session data from db: %w", err)
 	}

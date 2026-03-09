@@ -1,19 +1,20 @@
 package flow
 
 import (
-	"github.com/teamhanko/hanko/backend/flow_api/flow/capabilities"
-	"github.com/teamhanko/hanko/backend/flow_api/flow/credential_onboarding"
-	"github.com/teamhanko/hanko/backend/flow_api/flow/credential_usage"
-	"github.com/teamhanko/hanko/backend/flow_api/flow/device_trust"
-	"github.com/teamhanko/hanko/backend/flow_api/flow/login"
-	"github.com/teamhanko/hanko/backend/flow_api/flow/mfa_creation"
-	"github.com/teamhanko/hanko/backend/flow_api/flow/mfa_usage"
-	"github.com/teamhanko/hanko/backend/flow_api/flow/profile"
-	"github.com/teamhanko/hanko/backend/flow_api/flow/registration"
-	"github.com/teamhanko/hanko/backend/flow_api/flow/shared"
-	"github.com/teamhanko/hanko/backend/flow_api/flow/user_details"
-	"github.com/teamhanko/hanko/backend/flowpilot"
 	"time"
+
+	"github.com/teamhanko/hanko/backend/v2/flow_api/flow/capabilities"
+	"github.com/teamhanko/hanko/backend/v2/flow_api/flow/credential_onboarding"
+	"github.com/teamhanko/hanko/backend/v2/flow_api/flow/credential_usage"
+	"github.com/teamhanko/hanko/backend/v2/flow_api/flow/device_trust"
+	"github.com/teamhanko/hanko/backend/v2/flow_api/flow/login"
+	"github.com/teamhanko/hanko/backend/v2/flow_api/flow/mfa_creation"
+	"github.com/teamhanko/hanko/backend/v2/flow_api/flow/mfa_usage"
+	"github.com/teamhanko/hanko/backend/v2/flow_api/flow/profile"
+	"github.com/teamhanko/hanko/backend/v2/flow_api/flow/registration"
+	"github.com/teamhanko/hanko/backend/v2/flow_api/flow/shared"
+	"github.com/teamhanko/hanko/backend/v2/flow_api/flow/user_details"
+	"github.com/teamhanko/hanko/backend/v2/flowpilot"
 )
 
 var CapabilitiesSubFlow = flowpilot.NewSubFlow(shared.FlowCapabilities).
@@ -125,6 +126,7 @@ func NewLoginFlow(debug bool) flowpilot.Flow {
 			login.TriggerLoginWebhook{},
 			device_trust.IssueTrustDeviceCookie{},
 			shared.IssueSession{},
+			shared.DetermineAMRValues{},
 			shared.GetUserData{}).
 		AfterState(shared.StateOnboardingVerifyPasskeyAttestation,
 			shared.WebauthnCredentialSave{}).
@@ -163,6 +165,7 @@ func NewRegistrationFlow(debug bool) flowpilot.Flow {
 		ErrorState(shared.StateError).
 		BeforeState(shared.StateSuccess,
 			shared.IssueSession{},
+			registration.DetermineAMRValues{},
 			shared.GetUserData{},
 			registration.CreateUser{}).
 		SubFlows(
@@ -199,11 +202,14 @@ func NewProfileFlow(debug bool) flowpilot.Flow {
 			profile.WebauthnCredentialDelete{},
 			profile.SessionDelete{},
 			profile.WebauthnCredentialRename{},
+			profile.ConnectThirdpartyOauthProvider{},
+			profile.DisconnectThirdpartyOauthProvider{},
 		).
 		State(shared.StateProfileWebauthnCredentialVerification,
 			profile.WebauthnVerifyAttestationResponse{},
 			shared.Back{}).
 		State(shared.StateProfileAccountDeleted).
+		State(shared.StateThirdParty, profile.ExchangeToken{}, shared.Back{}).
 		InitialState(shared.StatePreflight, shared.StateProfileInit).
 		ErrorState(shared.StateError).
 		BeforeEachAction(profile.RefreshSessionUser{}).
@@ -221,12 +227,13 @@ func NewProfileFlow(debug bool) flowpilot.Flow {
 }
 
 func NewTokenExchangeFlow(debug bool) flowpilot.Flow {
-	return flowpilot.NewFlow("token_exchange").
+	return flowpilot.NewFlow(shared.FlowTokenExchange).
 		State(shared.StateThirdParty,
 			shared.ExchangeToken{}).
 		State(shared.StateSuccess).
 		BeforeState(shared.StateSuccess,
 			shared.IssueSession{},
+			shared.DetermineAMRValues{},
 			shared.GetUserData{}).
 		SubFlows(
 			CredentialUsageSubFlow,

@@ -3,8 +3,8 @@ import { ComponentChildren, createContext, h } from "preact";
 import { TranslateProvider } from "@denysvuika/preact-translate";
 
 import {
-  Fragment,
-  StateUpdater,
+  Dispatch,
+  SetStateAction,
   useCallback,
   useEffect,
   useMemo,
@@ -78,18 +78,18 @@ interface UIState {
 
 interface Context {
   hanko: Hanko;
-  setHanko: StateUpdater<Hanko>;
+  setHanko: Dispatch<SetStateAction<Hanko>>;
   page: h.JSX.Element;
-  setPage: StateUpdater<h.JSX.Element>;
+  setPage: Dispatch<SetStateAction<h.JSX.Element>>;
   init: (compName: ComponentName) => void;
   componentName: ComponentName;
-  setComponentName: StateUpdater<ComponentName>;
+  setComponentName: Dispatch<SetStateAction<ComponentName>>;
   lang: string;
   hidePasskeyButtonOnLogin: boolean;
   prefilledEmail?: string;
   prefilledUsername?: string;
   uiState: UIState;
-  setUIState: StateUpdater<UIState>;
+  setUIState: Dispatch<SetStateAction<UIState>>;
   initialComponentName: ComponentName;
   lastLogin?: LastLogin;
   isOwnFlow: (state: State<any>) => boolean;
@@ -147,6 +147,10 @@ const AppProvider = ({
     props.mode ?? "login",
   );
 
+  // TODO: check if necessary, see also TODO below
+  const hasInitializedRef = useRef(false);
+  const [isReadyToInit, setIsReadyToInit] = useState(false);
+
   const componentFlowNameMap = useMemo<Record<ComponentName, FlowName>>(
     () => ({
       auth: authComponentFlow,
@@ -200,6 +204,14 @@ const AppProvider = ({
       }),
     [hanko, isOwnFlow],
   );
+
+  useEffect(() => {
+    setUIState((prev) => ({
+      ...prev,
+      ...(prefilledEmail && { email: prefilledEmail }),
+      ...(prefilledUsername && { username: prefilledUsername }),
+    }));
+  }, [prefilledEmail, prefilledUsername]);
 
   useEffect(
     () =>
@@ -324,58 +336,103 @@ const AppProvider = ({
     }
   }, []);
 
-  const init = useCallback((compName: ComponentName) => {
-    setComponentName(compName);
-    const flowName = componentFlowNameMap[compName];
+  const init = useCallback(
+    (compName: ComponentName) => {
+      setComponentName(compName);
+      const flowName = componentFlowNameMap[compName];
 
-    if (flowName) {
-      flowInit(flowName).catch(handleError);
+      if (flowName) {
+        flowInit(flowName).catch(handleError);
+      }
+    },
+    [componentFlowNameMap],
+  );
+
+  // TODO: check if this can be done in cleaner way
+  // Step 1: Set the authComponentFlow from props.mode
+  useEffect(() => {
+    if (!hasInitializedRef.current) {
+      const timer = setTimeout(() => {
+        setAuthComponentFlow(props.mode ?? "login");
+        setIsReadyToInit(true);
+      }, 0);
+
+      return () => clearTimeout(timer);
     }
-  }, []);
+  }, [props.mode]);
 
-  useEffect(() => init(componentName), []);
+  // Step 2: Call init after authComponentFlow has been updated
+  useEffect(() => {
+    if (isReadyToInit && !hasInitializedRef.current) {
+      hasInitializedRef.current = true;
+      init(componentName);
+    }
+  }, [isReadyToInit, authComponentFlow, componentName, init]);
 
   useEffect(() => {
-    hanko.onUserDeleted(() => {
+    const cleanUserDeleted = hanko.onUserDeleted(() => {
       dispatchEvent("onUserDeleted");
     });
 
-    hanko.onSessionCreated((detail) => {
+    const cleanSessionCreated = hanko.onSessionCreated((detail) => {
       dispatchEvent("onSessionCreated", detail);
     });
 
-    hanko.onSessionExpired(() => {
+    const cleanSessionExpired = hanko.onSessionExpired(() => {
       dispatchEvent("onSessionExpired");
     });
 
-    hanko.onUserLoggedOut(() => {
+    const cleanUserLoggedOut = hanko.onUserLoggedOut(() => {
       dispatchEvent("onUserLoggedOut");
     });
 
-    hanko.onBeforeStateChange((detail) => {
+    const cleanBeforeStateChange = hanko.onBeforeStateChange((detail) => {
       dispatchEvent("onBeforeStateChange", detail);
     });
 
-    hanko.onAfterStateChange((detail) => {
+    const cleanAfterStateChange = hanko.onAfterStateChange((detail) => {
       dispatchEvent("onAfterStateChange", detail);
     });
+
+    return () => {
+      cleanUserDeleted();
+      cleanSessionCreated();
+      cleanSessionExpired();
+      cleanUserLoggedOut();
+      cleanBeforeStateChange();
+      cleanAfterStateChange();
+    };
   }, [hanko]);
 
-  useMemo(() => {
+  useEffect(() => {
     const cb = () => {
       init(componentName);
     };
     if (["auth", "login", "registration"].includes(componentName)) {
-      hanko.onUserLoggedOut(cb);
-      hanko.onSessionExpired(cb);
-      hanko.onUserDeleted(cb);
+      const cleanUserLoggedOut = hanko.onUserLoggedOut(cb);
+      const cleanSessionExpired = hanko.onSessionExpired(cb);
+      const cleanUserDeleted = hanko.onUserDeleted(cb);
+      return () => {
+        cleanUserLoggedOut();
+        cleanSessionExpired();
+        cleanUserDeleted();
+      };
     } else if (componentName === "profile") {
-      hanko.onSessionCreated(cb);
+      const cleanSessionCreated = hanko.onSessionCreated(cb);
+      return () => {
+        cleanSessionCreated();
+      };
     }
   }, [componentName, hanko, init]);
 
+  // Cast Provider to any to bypass strict JSX return type check (TS2786)
+  // TODO: Find out why, we this need to be casted to any for the build to work.
+  const AppContextProviderAny = AppContext.Provider as any;
+  const TranslateContextProviderAny = TranslateProvider as any;
+  const ContainerAny = Container as any;
+
   return (
-    <AppContext.Provider
+    <AppContextProviderAny
       value={{
         init,
         initialComponentName: props.componentName,
@@ -395,14 +452,14 @@ const AppProvider = ({
         isOwnFlow,
       }}
     >
-      <TranslateProvider
+      <TranslateContextProviderAny
         translations={translations}
         fallbackLang={fallbackLanguage}
         root={translationsLocation}
       >
-        <Container ref={ref}>
+        <ContainerAny ref={ref}>
           {componentName !== "events" ? (
-            <Fragment>
+            <>
               {injectStyles ? (
                 <style
                   nonce={nonce || undefined}
@@ -413,11 +470,11 @@ const AppProvider = ({
                 />
               ) : null}
               {page}
-            </Fragment>
+            </>
           ) : null}
-        </Container>
-      </TranslateProvider>
-    </AppContext.Provider>
+        </ContainerAny>
+      </TranslateContextProviderAny>
+    </AppContextProviderAny>
   );
 };
 
