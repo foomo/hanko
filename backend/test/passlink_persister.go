@@ -2,8 +2,8 @@ package test
 
 import (
 	"github.com/gofrs/uuid"
-	"github.com/teamhanko/hanko/backend/persistence"
-	"github.com/teamhanko/hanko/backend/persistence/models"
+	"github.com/teamhanko/hanko/backend/v2/persistence"
+	"github.com/teamhanko/hanko/backend/v2/persistence/models"
 )
 
 func NewPasslinkPersister(init []models.Passlink) persistence.PasslinkPersister {
