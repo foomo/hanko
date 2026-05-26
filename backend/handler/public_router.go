@@ -171,18 +171,6 @@ func NewPublicRouter(cfg *config.Config, persister persistence.Persister, promet
 
 	healthHandler := NewHealthHandler()
 
-	if cfg.Passlink.Enabled {
-		passlinkHandler, err := NewPasslinkHandler(cfg, persister, sessionManager, mailer, auditLogger)
-		if err != nil {
-			panic(fmt.Errorf("failed to create public passlink handler: %w", err))
-		}
-
-		passlink := g.Group("/passlink")
-		passlinkLogin := passlink.Group("/login", webhookMiddlware)
-		passlinkLogin.POST("/initialize", passlinkHandler.Init).Name = "passlink_login_initialize"
-		passlinkLogin.POST("/finalize", passlinkHandler.Finish).Name = "passlink_login_finalize"
-	}
-
 	health := e.Group("/health")
 	health.GET("/alive", healthHandler.Alive)
 	health.GET("/ready", healthHandler.Ready)
