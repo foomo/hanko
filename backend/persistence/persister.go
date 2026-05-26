@@ -30,8 +30,6 @@ type Persister interface {
 	GetJwkPersisterWithConnection(tx *pop.Connection) JwkPersister
 	GetPasscodePersister() PasscodePersister
 	GetPasscodePersisterWithConnection(tx *pop.Connection) PasscodePersister
-	GetPasslinkPersister() PasslinkPersister
-	GetPasslinkPersisterWithConnection(tx *pop.Connection) PasslinkPersister
 	GetPasswordCredentialPersister() PasswordCredentialPersister
 	GetPasswordCredentialPersisterWithConnection(tx *pop.Connection) PasswordCredentialPersister
 	GetPrimaryEmailPersister() PrimaryEmailPersister
@@ -177,14 +175,6 @@ func (p *persister) GetPasscodePersister() PasscodePersister {
 
 func (p *persister) GetPasscodePersisterWithConnection(tx *pop.Connection) PasscodePersister {
 	return NewPasscodePersister(tx)
-}
-
-func (p *persister) GetPasslinkPersister() PasslinkPersister {
-	return NewPasslinkPersister(p.DB)
-}
-
-func (p *persister) GetPasslinkPersisterWithConnection(tx *pop.Connection) PasslinkPersister {
-	return NewPasslinkPersister(tx)
 }
 
 func (p *persister) GetPasswordCredentialPersister() PasswordCredentialPersister {

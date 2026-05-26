@@ -85,11 +85,6 @@ var (
 	AuditLogPasscodeLoginFinalSucceeded AuditLogType = "passcode_login_final_succeeded"
 	AuditLogPasscodeLoginFinalFailed    AuditLogType = "passcode_login_final_failed"
 
-	AuditLogPasslinkLoginInitSucceeded  AuditLogType = "passlink_login_init_succeeded"
-	AuditLogPasslinkLoginInitFailed     AuditLogType = "passlink_login_init_failed"
-	AuditLogPasslinkLoginFinalSucceeded AuditLogType = "passlink_login_final_succeeded"
-	AuditLogPasslinkLoginFinalFailed    AuditLogType = "passlink_login_final_failed"
-
 	AuditLogWebAuthnRegistrationInitSucceeded  AuditLogType = "webauthn_registration_init_succeeded"
 	AuditLogWebAuthnRegistrationInitFailed     AuditLogType = "webauthn_registration_init_failed"
 	AuditLogWebAuthnRegistrationFinalSucceeded AuditLogType = "webauthn_registration_final_succeeded"
